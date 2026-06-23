@@ -1,0 +1,345 @@
+diff --git a/crates/forge_domain/src/provider.rs b/crates/forge_domain/src/provider.rs
+index 2038031..155e3c7 100644
+--- a/crates/forge_domain/src/provider.rs
++++ b/crates/forge_domain/src/provider.rs
+@@ -53,6 +53,7 @@ impl ProviderId {
+     pub const ZAI_CODING: ProviderId = ProviderId(Cow::Borrowed("zai_coding"));
+     pub const CEREBRAS: ProviderId = ProviderId(Cow::Borrowed("cerebras"));
+     pub const XAI: ProviderId = ProviderId(Cow::Borrowed("xai"));
++    pub const GROK_BUILD: ProviderId = ProviderId(Cow::Borrowed("grok_build"));
+     pub const ANTHROPIC: ProviderId = ProviderId(Cow::Borrowed("anthropic"));
+     pub const CLAUDE_CODE: ProviderId = ProviderId(Cow::Borrowed("claude_code"));
+     pub const VERTEX_AI: ProviderId = ProviderId(Cow::Borrowed("vertex_ai"));
+@@ -146,6 +147,7 @@ impl ProviderId {
+             "io_intelligence" => "IOIntelligence".to_string(),
+             "minimax" => "MiniMax".to_string(),
+             "codex" => "Codex".to_string(),
++            "grok_build" => "Grok Build".to_string(),
+             "opencode_zen" => "OpenCode Zen".to_string(),
+             "opencode_go" => "OpenCode Go".to_string(),
+             "fireworks-ai" => "FireworksAI".to_string(),
+@@ -187,6 +189,7 @@ impl std::str::FromStr for ProviderId {
+             "zai_coding" => ProviderId::ZAI_CODING,
+             "cerebras" => ProviderId::CEREBRAS,
+             "xai" => ProviderId::XAI,
++            "grok_build" => ProviderId::GROK_BUILD,
+             "anthropic" => ProviderId::ANTHROPIC,
+             "claude_code" => ProviderId::CLAUDE_CODE,
+             "vertex_ai" => ProviderId::VERTEX_AI,
+diff --git a/crates/forge_infra/src/auth/strategy.rs b/crates/forge_infra/src/auth/strategy.rs
+index 559a365..3ee09a8 100644
+--- a/crates/forge_infra/src/auth/strategy.rs
++++ b/crates/forge_infra/src/auth/strategy.rs
+@@ -1319,6 +1319,62 @@ mod tests {
+         assert!(matches!(actual.unwrap(), AnyAuthStrategy::CodexDevice(_)));
+     }
+ 
++    #[test]
++    fn test_create_auth_strategy_xai_oauth_code_uses_standard() {
++        // xAI is neither CLAUDE_CODE nor GITHUB_COPILOT, so the OAuthCode
++        // (SuperGrok loopback) flow must fall through to the generic
++        // StandardHttpProvider with zero per-provider code.
++        let config = OAuthConfig {
++            client_id: "b1a00492-073a-47ea-816f-4c329264a828".to_string().into(),
++            auth_url: Url::parse("https://auth.x.ai/oauth2/authorize").unwrap(),
++            token_url: Url::parse("https://auth.x.ai/oauth2/token").unwrap(),
++            scopes: vec!["api:access".to_string()],
++            redirect_uri: Some("http://127.0.0.1:56121/callback".to_string()),
++            use_pkce: true,
++            token_refresh_url: None,
++            extra_auth_params: None,
++            custom_headers: None,
++        };
++
++        let factory = ForgeAuthStrategyFactory;
++        let actual = factory
++            .create_auth_strategy(
++                ProviderId::XAI,
++                forge_domain::AuthMethod::OAuthCode(config),
++                vec![],
++            )
++            .unwrap();
++        assert!(matches!(actual, AnyAuthStrategy::OAuthCodeStandard(_)));
++    }
++
++    #[test]
++    fn test_create_auth_strategy_xai_oauth_device_uses_device() {
++        // The xAI headless device flow omits token_refresh_url, so it must
++        // route to the plain OAuthDevice strategy (RFC 8628), not the
++        // GitHub-Copilot OAuthWithApiKey hybrid.
++        let config = OAuthConfig {
++            client_id: "b1a00492-073a-47ea-816f-4c329264a828".to_string().into(),
++            auth_url: Url::parse("https://auth.x.ai/oauth2/device/code").unwrap(),
++            token_url: Url::parse("https://auth.x.ai/oauth2/token").unwrap(),
++            scopes: vec!["api:access".to_string()],
++            redirect_uri: None,
++            use_pkce: false,
++            token_refresh_url: None,
++            extra_auth_params: None,
++            custom_headers: None,
++        };
++
++        let factory = ForgeAuthStrategyFactory;
++        let actual = factory
++            .create_auth_strategy(
++                ProviderId::XAI,
++                forge_domain::AuthMethod::OAuthDevice(config),
++                vec![],
++            )
++            .unwrap();
++        assert!(matches!(actual, AnyAuthStrategy::OAuthDevice(_)));
++    }
++
+     /// Helper to build a JWT token with the given claims payload.
+     fn build_jwt(claims: &serde_json::Value) -> String {
+         use base64::Engine;
+diff --git a/crates/forge_repo/src/provider/openai.rs b/crates/forge_repo/src/provider/openai.rs
+index 103d302..4134bcc 100644
+--- a/crates/forge_repo/src/provider/openai.rs
++++ b/crates/forge_repo/src/provider/openai.rs
+@@ -126,6 +126,31 @@ impl<H: HttpInfra> OpenAIProvider<H> {
+             );
+         }
+ 
++        // Grok CLI proxy (Composer, grok-build) requires session OAuth plus
++        // client-identity headers; XAI_API_KEY does not work on this endpoint.
++        if self.provider.id == ProviderId::GROK_BUILD {
++            let client_version = std::env::var("GROK_CLIENT_VERSION")
++                .unwrap_or_else(|_| "0.2.51".to_string());
++            headers.push(("X-XAI-Token-Auth".to_string(), "xai-grok-cli".to_string()));
++            headers.push(("x-grok-client-version".to_string(), client_version.clone()));
++            headers.push((
++                "User-Agent".to_string(),
++                format!("xai-grok-workspace/{client_version}"),
++            ));
++            if let Some(model) = &request.model {
++                headers.push((
++                    "x-grok-model-override".to_string(),
++                    model.as_str().to_string(),
++                ));
++            }
++            debug!(
++                provider = %self.provider.url,
++                model = ?request.model,
++                client_version = %client_version,
++                "Added Grok CLI proxy headers"
++            );
++        }
++
+         // Add GitHub Copilot optimization headers only for github_copilot provider
+         if self.provider.id == ProviderId::GITHUB_COPILOT {
+             // Determine initiator: use request.initiator if available, otherwise detect
+diff --git a/crates/forge_repo/src/provider/provider.json b/crates/forge_repo/src/provider/provider.json
+index 2d3353b..94db4dd 100644
+--- a/crates/forge_repo/src/provider/provider.json
++++ b/crates/forge_repo/src/provider/provider.json
+@@ -108,7 +108,92 @@
+     "response_type": "OpenAI",
+     "url": "https://api.x.ai/v1/chat/completions",
+     "models": "https://api.x.ai/v1/models",
+-    "auth_methods": ["api_key"]
++    "auth_methods": [
++      {
++        "oauth_code": {
++          "auth_url": "https://auth.x.ai/oauth2/authorize",
++          "token_url": "https://auth.x.ai/oauth2/token",
++          "client_id": "b1a00492-073a-47ea-816f-4c329264a828",
++          "scopes": [
++            "openid",
++            "profile",
++            "email",
++            "offline_access",
++            "grok-cli:access",
++            "api:access"
++          ],
++          "redirect_uri": "http://127.0.0.1:56121/callback",
++          "use_pkce": true,
++          "extra_auth_params": {
++            "plan": "generic",
++            "referrer": "forgecode"
++          }
++        }
++      },
++      {
++        "oauth_device": {
++          "auth_url": "https://auth.x.ai/oauth2/device/code",
++          "token_url": "https://auth.x.ai/oauth2/token",
++          "client_id": "b1a00492-073a-47ea-816f-4c329264a828",
++          "scopes": [
++            "openid",
++            "profile",
++            "email",
++            "offline_access",
++            "grok-cli:access",
++            "api:access"
++          ],
++          "use_pkce": false
++        }
++      },
++      "api_key"
++    ]
++  },
++  {
++    "id": "grok_build",
++    "url_param_vars": [],
++    "response_type": "OpenAI",
++    "url": "https://cli-chat-proxy.grok.com/v1/chat/completions",
++    "models": "https://cli-chat-proxy.grok.com/v1/models",
++    "auth_methods": [
++      {
++        "oauth_code": {
++          "auth_url": "https://auth.x.ai/oauth2/authorize",
++          "token_url": "https://auth.x.ai/oauth2/token",
++          "client_id": "b1a00492-073a-47ea-816f-4c329264a828",
++          "scopes": [
++            "openid",
++            "profile",
++            "email",
++            "offline_access",
++            "grok-cli:access",
++            "api:access"
++          ],
++          "redirect_uri": "http://127.0.0.1:56121/callback",
++          "use_pkce": true,
++          "extra_auth_params": {
++            "plan": "generic",
++            "referrer": "forgecode"
++          }
++        }
++      },
++      {
++        "oauth_device": {
++          "auth_url": "https://auth.x.ai/oauth2/device/code",
++          "token_url": "https://auth.x.ai/oauth2/token",
++          "client_id": "b1a00492-073a-47ea-816f-4c329264a828",
++          "scopes": [
++            "openid",
++            "profile",
++            "email",
++            "offline_access",
++            "grok-cli:access",
++            "api:access"
++          ],
++          "use_pkce": false
++        }
++      }
++    ]
+   },
+   {
+     "id": "openai",
+diff --git a/crates/forge_repo/src/provider/provider_repo.rs b/crates/forge_repo/src/provider/provider_repo.rs
+index 9f9d2a5..de50b21 100644
+--- a/crates/forge_repo/src/provider/provider_repo.rs
++++ b/crates/forge_repo/src/provider/provider_repo.rs
+@@ -713,6 +713,111 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn test_xai_oauth_config() {
++        let configs = get_provider_configs();
++        let config = configs.iter().find(|c| c.id == ProviderId::XAI).unwrap();
++
++        assert_eq!(config.id, ProviderId::XAI);
++        assert_eq!(config.api_key_vars, Some("XAI_API_KEY".to_string()));
++        assert_eq!(config.response_type, Some(ProviderResponse::OpenAI));
++        assert_eq!(config.url.as_str(), "https://api.x.ai/v1/chat/completions");
++
++        // Three auth methods: loopback OAuth, headless device OAuth, manual key.
++        assert_eq!(config.auth_methods.len(), 3);
++        assert!(config.auth_methods.contains(&AuthMethod::ApiKey));
++
++        let expected_scopes = vec![
++            "openid".to_string(),
++            "profile".to_string(),
++            "email".to_string(),
++            "offline_access".to_string(),
++            "grok-cli:access".to_string(),
++            "api:access".to_string(),
++        ];
++
++        // Loopback authorization-code + PKCE (SuperGrok subscription).
++        let code = config
++            .auth_methods
++            .iter()
++            .find_map(|m| match m {
++                AuthMethod::OAuthCode(cfg) => Some(cfg),
++                _ => None,
++            })
++            .expect("xai should expose an oauth_code auth method");
++        assert_eq!(
++            code.client_id.as_str(),
++            "b1a00492-073a-47ea-816f-4c329264a828"
++        );
++        assert_eq!(code.auth_url.as_str(), "https://auth.x.ai/oauth2/authorize");
++        assert_eq!(code.token_url.as_str(), "https://auth.x.ai/oauth2/token");
++        assert_eq!(code.scopes, expected_scopes);
++        assert_eq!(
++            code.redirect_uri.as_deref(),
++            Some("http://127.0.0.1:56121/callback")
++        );
++        assert!(code.use_pkce);
++        let extra = code
++            .extra_auth_params
++            .as_ref()
++            .expect("oauth_code should set extra_auth_params");
++        // plan=generic is mandatory: xAI rejects loopback OAuth from
++        // non-allowlisted clients without it.
++        assert_eq!(extra.get("plan").map(String::as_str), Some("generic"));
++        assert_eq!(extra.get("referrer").map(String::as_str), Some("forgecode"));
++
++        // Headless device-code (remote / VPS). auth_url MUST be the
++        // device-authorization endpoint, and token_refresh_url must be absent
++        // so the factory routes to the plain device flow.
++        let device = config
++            .auth_methods
++            .iter()
++            .find_map(|m| match m {
++                AuthMethod::OAuthDevice(cfg) => Some(cfg),
++                _ => None,
++            })
++            .expect("xai should expose an oauth_device auth method");
++        assert_eq!(
++            device.client_id.as_str(),
++            "b1a00492-073a-47ea-816f-4c329264a828"
++        );
++        assert_eq!(
++            device.auth_url.as_str(),
++            "https://auth.x.ai/oauth2/device/code"
++        );
++        assert_eq!(device.token_url.as_str(), "https://auth.x.ai/oauth2/token");
++        assert_eq!(device.scopes, expected_scopes);
++        assert!(device.redirect_uri.is_none());
++        assert!(device.token_refresh_url.is_none());
++    }
++
++    #[test]
++    fn test_grok_build_config() {
++        let configs = get_provider_configs();
++        let config = configs
++            .iter()
++            .find(|c| c.id == ProviderId::GROK_BUILD)
++            .unwrap();
++
++        assert_eq!(config.id, ProviderId::GROK_BUILD);
++        assert_eq!(config.api_key_vars, None);
++        assert_eq!(config.response_type, Some(ProviderResponse::OpenAI));
++        assert_eq!(
++            config.url.as_str(),
++            "https://cli-chat-proxy.grok.com/v1/chat/completions"
++        );
++        assert_eq!(
++            config.models.as_ref().and_then(|m| match m {
++                ModelSource::Url(url) => Some(url.as_str()),
++                _ => None,
++            }),
++            Some("https://cli-chat-proxy.grok.com/v1/models")
++        );
++        // OAuth-only: session tokens from SuperGrok login, not XAI_API_KEY.
++        assert_eq!(config.auth_methods.len(), 2);
++        assert!(!config.auth_methods.contains(&AuthMethod::ApiKey));
++    }
++
+     #[test]
+     fn test_vertex_ai_config() {
+         let configs = get_provider_configs();

@@ -1,0 +1,505 @@
+diff --git a/agent/auxiliary_client.py b/agent/auxiliary_client.py
+index 01ea45d7b..3da7c1b07 100644
+--- a/agent/auxiliary_client.py
++++ b/agent/auxiliary_client.py
+@@ -1326,7 +1326,7 @@ def _resolve_nous_runtime_api(*, force_refresh: bool = False) -> Optional[tuple[
+     return api_key, base_url
+ 
+ 
+-def _resolve_xai_oauth_for_aux() -> Optional[Tuple[str, str]]:
++def _resolve_xai_oauth_for_aux(model: str = "") -> Optional[Tuple[str, str]]:
+     """Resolve a fresh xAI OAuth (api_key, base_url) for auxiliary clients.
+ 
+     Prefer the credential pool, matching the main runtime/provider status
+@@ -1344,6 +1344,7 @@ def _resolve_xai_oauth_for_aux() -> Optional[Tuple[str, str]]:
+             DEFAULT_XAI_OAUTH_BASE_URL,
+             _xai_validate_inference_base_url,
+         )
++        from hermes_cli.xai_grok_build import resolve_xai_oauth_inference_base_url
+ 
+         pool = load_pool("xai-oauth")
+         if pool and pool.has_credentials():
+@@ -1362,7 +1363,7 @@ def _resolve_xai_oauth_for_aux() -> Optional[Tuple[str, str]]:
+                     fallback=DEFAULT_XAI_OAUTH_BASE_URL,
+                 )
+                 if api_key and base_url:
+-                    return api_key, base_url
++                    return api_key, resolve_xai_oauth_inference_base_url(model, fallback=base_url)
+     except Exception as exc:
+         logger.debug("Auxiliary xAI OAuth pool credential resolution failed: %s", exc)
+ 
+@@ -1378,7 +1379,7 @@ def _resolve_xai_oauth_for_aux() -> Optional[Tuple[str, str]]:
+     base_url = str(creds.get("base_url") or "").strip().rstrip("/")
+     if not api_key or not base_url:
+         return None
+-    return api_key, base_url
++    return api_key, resolve_xai_oauth_inference_base_url(model, fallback=base_url)
+ 
+ 
+ def _read_codex_access_token() -> Optional[str]:
+@@ -1974,12 +1975,23 @@ def _build_xai_oauth_aux_client(model: str) -> Tuple[Optional[Any], Optional[str
+             "pass model explicitly (auxiliary.<task>.model in config.yaml)."
+         )
+         return None, None
+-    resolved = _resolve_xai_oauth_for_aux()
++    resolved = _resolve_xai_oauth_for_aux(model)
+     if resolved is None:
+         return None, None
+     api_key, base_url = resolved
+     logger.debug("Auxiliary client: xAI OAuth (%s via Responses API)", model)
+-    real_client = OpenAI(api_key=api_key, base_url=base_url)
++    client_kwargs: Dict[str, Any] = {}
++    try:
++        from hermes_cli.xai_grok_build import (
++            grok_cli_proxy_default_headers,
++            is_xai_grok_build_model,
++        )
++
++        if is_xai_grok_build_model(model):
++            client_kwargs["default_headers"] = grok_cli_proxy_default_headers(model)
++    except Exception:
++        pass
++    real_client = OpenAI(api_key=api_key, base_url=base_url, **client_kwargs)
+     return CodexAuxiliaryClient(real_client, model), model
+ 
+ 
+diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
+index 1ee1702b4..144203ffa 100644
+--- a/agent/chat_completion_helpers.py
++++ b/agent/chat_completion_helpers.py
+@@ -606,7 +606,11 @@ def build_api_kwargs(agent, api_messages: list) -> dict:
+                 and "/backend-api/codex" in agent._base_url_lower
+             )
+         )
+-        is_xai_responses = agent.provider in {"xai", "xai-oauth"} or agent._base_url_hostname == "api.x.ai"
++        is_xai_responses = (
++            agent.provider in {"xai", "xai-oauth"}
++            or agent._base_url_hostname == "api.x.ai"
++            or base_url_host_matches(agent.base_url, "cli-chat-proxy.grok.com")
++        )
+         _msgs_for_codex = agent._prepare_messages_for_non_vision_model(api_messages)
+ 
+         # xAI's /responses endpoint rejects ``pattern`` and ``format`` keywords
+diff --git a/agent/model_metadata.py b/agent/model_metadata.py
+index 8cfec23fe..f7a9c4e6a 100644
+--- a/agent/model_metadata.py
++++ b/agent/model_metadata.py
+@@ -269,7 +269,8 @@ DEFAULT_CONTEXT_LENGTHS = {
+     # via a custom provider. Values sourced from models.dev (2026-04).
+     # Keys use substring matching (longest-first), so e.g. "grok-4.20"
+     # matches "grok-4.20-0309-reasoning" / "-non-reasoning" / "-multi-agent-0309".
+-    "grok-build": 256000,       # grok-build-0.1
++    "grok-composer": 200000,    # grok-composer-2.5-fast (cli-chat-proxy)
++    "grok-build": 512000,       # grok-build (cli-chat-proxy)
+     "grok-code-fast": 256000,   # grok-code-fast-1
+     "grok-2-vision": 8192,      # grok-2-vision, -1212, -latest
+     "grok-4-fast": 2000000,     # grok-4-fast-(non-)reasoning, also matches -reasoning
+diff --git a/agent/transports/codex.py b/agent/transports/codex.py
+index 1d24ac335..65d05623a 100644
+--- a/agent/transports/codex.py
++++ b/agent/transports/codex.py
+@@ -241,6 +241,28 @@ class ResponsesApiTransport(ProviderTransport):
+             merged_extra_headers["x-grok-conv-id"] = session_id
+             kwargs["extra_headers"] = merged_extra_headers
+ 
++        try:
++            from hermes_cli.xai_grok_build import (
++                grok_cli_proxy_request_headers,
++                is_xai_grok_build_model,
++            )
++
++            if is_xai_grok_build_model(model):
++                existing_extra_headers = kwargs.get("extra_headers")
++                merged_extra_headers = {}
++                if isinstance(existing_extra_headers, dict):
++                    merged_extra_headers.update(
++                        {
++                            str(key): str(value)
++                            for key, value in existing_extra_headers.items()
++                            if key and value is not None
++                        }
++                    )
++                merged_extra_headers.update(grok_cli_proxy_request_headers(model))
++                kwargs["extra_headers"] = merged_extra_headers
++        except Exception:
++            pass
++
+             # xAI Responses cache-routing — body-level field per
+             # https://docs.x.ai/developers/advanced-api-usage/prompt-caching/maximizing-cache-hits.
+             # Sent via extra_body (not the typed kwarg) so it survives openai
+diff --git a/hermes_cli/model_setup_flows.py b/hermes_cli/model_setup_flows.py
+index 83e60fc20..4fd442fdd 100644
+--- a/hermes_cli/model_setup_flows.py
++++ b/hermes_cli/model_setup_flows.py
+@@ -516,8 +516,19 @@ def _model_flow_xai_oauth(_config, current_model="", *, args=None):
+     except Exception:
+         pass
+ 
+-    models = list(_PROVIDER_MODELS.get("xai-oauth") or _PROVIDER_MODELS.get("xai") or [])
+-    selected = _prompt_model_selection(models, current_model=current_model or (models[0] if models else "grok-4.3"))
++    from hermes_cli.xai_grok_build import get_xai_oauth_model_ids
++
++    access_token = ""
++    try:
++        creds = resolve_xai_oauth_runtime_credentials()
++        access_token = str(creds.get("api_key") or "").strip()
++    except Exception:
++        pass
++    models = get_xai_oauth_model_ids(access_token=access_token or None)
++    selected = _prompt_model_selection(
++        models,
++        current_model=current_model or (models[0] if models else "grok-composer-2.5-fast"),
++    )
+     if selected:
+         _save_model_choice(selected)
+         _update_config_for_provider("xai-oauth", base_url)
+diff --git a/hermes_cli/models.py b/hermes_cli/models.py
+index afab5bac3..2115d50f0 100644
+--- a/hermes_cli/models.py
++++ b/hermes_cli/models.py
+@@ -2199,7 +2199,9 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False)
+             access_token = None
+         return get_codex_model_ids(access_token=access_token)
+     if normalized == "xai-oauth":
+-        return list(_PROVIDER_MODELS.get("xai-oauth", _PROVIDER_MODELS.get("xai", [])))
++        from hermes_cli.xai_grok_build import get_xai_oauth_model_ids
++
++        return get_xai_oauth_model_ids()
+     if normalized in {"copilot", "copilot-acp"}:
+         try:
+             live = _fetch_github_models(_resolve_copilot_catalog_api_key())
+diff --git a/hermes_cli/runtime_provider.py b/hermes_cli/runtime_provider.py
+index 909cbe07a..0e963674f 100644
+--- a/hermes_cli/runtime_provider.py
++++ b/hermes_cli/runtime_provider.py
+@@ -312,8 +312,13 @@ def _resolve_runtime_from_pool_entry(
+         api_mode = "codex_responses"
+         base_url = base_url or DEFAULT_CODEX_BASE_URL
+     elif provider == "xai-oauth":
++        from hermes_cli.xai_grok_build import resolve_xai_oauth_inference_base_url
++
+         api_mode = "codex_responses"
+-        base_url = base_url or DEFAULT_XAI_OAUTH_BASE_URL
++        base_url = resolve_xai_oauth_inference_base_url(
++            effective_model,
++            fallback=base_url or DEFAULT_XAI_OAUTH_BASE_URL,
++        )
+     elif provider == "qwen-oauth":
+         api_mode = "chat_completions"
+         base_url = base_url or DEFAULT_QWEN_BASE_URL
+@@ -1489,11 +1494,18 @@ def resolve_runtime_provider(
+ 
+     if provider == "xai-oauth":
+         try:
++            from hermes_cli.xai_grok_build import resolve_xai_oauth_inference_base_url
++
+             creds = resolve_xai_oauth_runtime_credentials()
++            effective_model = str(target_model or model_cfg.get("default") or "").strip()
++            oauth_base = (creds.get("base_url") or "").rstrip("/") or DEFAULT_XAI_OAUTH_BASE_URL
+             return {
+                 "provider": "xai-oauth",
+                 "api_mode": "codex_responses",
+-                "base_url": (creds.get("base_url") or "").rstrip("/") or DEFAULT_XAI_OAUTH_BASE_URL,
++                "base_url": resolve_xai_oauth_inference_base_url(
++                    effective_model,
++                    fallback=oauth_base,
++                ),
+                 "api_key": creds.get("api_key", ""),
+                 "source": creds.get("source", "hermes-auth-store"),
+                 "last_refresh": creds.get("last_refresh"),
+diff --git a/hermes_cli/xai_grok_build.py b/hermes_cli/xai_grok_build.py
+new file mode 100644
+index 000000000..6e400e7c4
+--- /dev/null
++++ b/hermes_cli/xai_grok_build.py
+@@ -0,0 +1,168 @@
++"""xAI Grok Build / Composer models via cli-chat-proxy.grok.com.
++
++SuperGrok OAuth tokens (``xai-oauth``) work against both ``api.x.ai/v1``
++(dev API models) and ``cli-chat-proxy.grok.com/v1`` (grok-build,
++grok-composer-*).  The proxy requires Grok-CLI identity headers that
++``XAI_API_KEY`` cannot satisfy.
++"""
++
++from __future__ import annotations
++
++import json
++import logging
++import os
++import urllib.request
++from typing import Dict, List, Optional
++
++logger = logging.getLogger(__name__)
++
++DEFAULT_XAI_GROK_BUILD_BASE_URL = "https://cli-chat-proxy.grok.com/v1"
++DEFAULT_GROK_CLIENT_VERSION = "0.2.51"
++
++# Static fallback when live ``/models`` is unreachable (offline picker).
++_XAI_GROK_BUILD_STATIC_FALLBACK: List[str] = [
++    "grok-composer-2.5-fast",
++    "grok-build",
++]
++
++
++def grok_client_version() -> str:
++    return (
++        os.getenv("GROK_CLIENT_VERSION", "").strip()
++        or os.getenv("HERMES_GROK_CLIENT_VERSION", "").strip()
++        or DEFAULT_GROK_CLIENT_VERSION
++    )
++
++
++def is_xai_grok_build_model(model: str) -> bool:
++    """Return True when *model* is served on cli-chat-proxy, not api.x.ai."""
++    mid = str(model or "").strip().lower()
++    if not mid:
++        return False
++    return (
++        mid == "grok-build"
++        or mid.startswith("grok-build-")
++        or mid.startswith("grok-composer-")
++    )
++
++
++def resolve_xai_oauth_inference_base_url(
++    model: str,
++    *,
++    fallback: str,
++) -> str:
++    """Pick api.x.ai vs cli-chat-proxy based on the target model."""
++    if is_xai_grok_build_model(model):
++        override = (
++            os.getenv("GROK_CLI_CHAT_PROXY_BASE_URL", "").strip().rstrip("/")
++            or os.getenv("HERMES_XAI_GROK_BUILD_BASE_URL", "").strip().rstrip("/")
++        )
++        return override or DEFAULT_XAI_GROK_BUILD_BASE_URL
++    return (fallback or "").strip().rstrip("/")
++
++
++def grok_cli_proxy_model_list_headers(access_token: str) -> Dict[str, str]:
++    return {
++        "Authorization": f"Bearer {access_token}",
++        "X-XAI-Token-Auth": "xai-grok-cli",
++        "Accept": "application/json",
++    }
++
++
++def grok_cli_proxy_request_headers(model: str) -> Dict[str, str]:
++    """Per-request headers for cli-chat-proxy inference."""
++    version = grok_client_version()
++    headers = {
++        "X-XAI-Token-Auth": "xai-grok-cli",
++        "x-grok-client-version": version,
++        "User-Agent": f"xai-grok-workspace/{version}",
++    }
++    mid = str(model or "").strip()
++    if mid:
++        headers["x-grok-model-override"] = mid
++    return headers
++
++
++def grok_cli_proxy_default_headers(model: str) -> Dict[str, str]:
++    """Client-level default headers for cli-chat-proxy OpenAI clients."""
++    return grok_cli_proxy_request_headers(model)
++
++
++def fetch_xai_grok_build_models(
++    access_token: str,
++    *,
++    timeout: float = 5.0,
++) -> Optional[List[str]]:
++    """Fetch grok-build / composer model IDs from cli-chat-proxy."""
++    token = str(access_token or "").strip()
++    if not token:
++        return None
++
++    base = (
++        os.getenv("GROK_CLI_CHAT_PROXY_BASE_URL", "").strip().rstrip("/")
++        or os.getenv("HERMES_XAI_GROK_BUILD_BASE_URL", "").strip().rstrip("/")
++        or DEFAULT_XAI_GROK_BUILD_BASE_URL
++    )
++    url = f"{base}/models"
++    req = urllib.request.Request(
++        url,
++        headers=grok_cli_proxy_model_list_headers(token),
++    )
++    try:
++        with urllib.request.urlopen(req, timeout=timeout) as resp:
++            data = json.loads(resp.read().decode())
++        models = data.get("data") if isinstance(data, dict) else None
++        if not isinstance(models, list):
++            return None
++        ids = [str(m.get("id", "")).strip() for m in models if isinstance(m, dict)]
++        ids = [mid for mid in ids if mid]
++        return ids or None
++    except Exception as exc:
++        logger.debug("cli-chat-proxy /models fetch failed: %s", exc)
++        return None
++
++
++def _merge_model_ids(*groups: List[str]) -> List[str]:
++    seen: set[str] = set()
++    merged: List[str] = []
++    for group in groups:
++        for mid in group:
++            if mid and mid not in seen:
++                seen.add(mid)
++                merged.append(mid)
++    return merged
++
++
++def _promote_composer_models(ids: List[str]) -> List[str]:
++    """Pin cli-chat-proxy headline models at the top of the picker."""
++    priority = ("grok-composer-2.5-fast", "grok-build")
++    head = [m for m in priority if m in ids]
++    tail = [m for m in ids if m not in head]
++    return head + tail
++
++
++def get_xai_oauth_model_ids(
++    access_token: Optional[str] = None,
++    *,
++    timeout: float = 5.0,
++) -> List[str]:
++    """Merged catalog: cli-chat-proxy (Composer/Build) + api.x.ai models."""
++    from hermes_cli.models import _xai_curated_models
++
++    api_models = list(_xai_curated_models())
++
++    token = str(access_token or "").strip()
++    if not token:
++        try:
++            from hermes_cli.auth import resolve_xai_oauth_runtime_credentials
++
++            creds = resolve_xai_oauth_runtime_credentials(refresh_if_expiring=True)
++            token = str(creds.get("api_key") or "").strip()
++        except Exception:
++            token = ""
++
++    build_models = fetch_xai_grok_build_models(token, timeout=timeout) if token else None
++    if not build_models:
++        build_models = list(_XAI_GROK_BUILD_STATIC_FALLBACK)
++
++    return _promote_composer_models(_merge_model_ids(build_models, api_models))
+\ No newline at end of file
+diff --git a/run_agent.py b/run_agent.py
+index 2bf27d575..642e1b18b 100644
+--- a/run_agent.py
++++ b/run_agent.py
+@@ -3755,8 +3755,16 @@ class AIAgent:
+ 
+         self.api_key = api_key.strip()
+         self.base_url = base_url.strip().rstrip("/")
++        if self.provider == "xai-oauth":
++            from hermes_cli.xai_grok_build import resolve_xai_oauth_inference_base_url
++
++            self.base_url = resolve_xai_oauth_inference_base_url(
++                getattr(self, "model", ""),
++                fallback=self.base_url,
++            )
+         self._client_kwargs["api_key"] = self.api_key
+         self._client_kwargs["base_url"] = self.base_url
++        self._apply_client_headers_for_base_url(self.base_url)
+ 
+         if not self._replace_primary_openai_client(reason=f"{self.provider}_credential_refresh"):
+             return False
+@@ -3912,6 +3920,12 @@ class AIAgent:
+             self._client_kwargs["default_headers"] = _codex_cloudflare_headers(
+                 self._client_kwargs.get("api_key", "")
+             )
++        elif base_url_host_matches(base_url, "cli-chat-proxy.grok.com"):
++            from hermes_cli.xai_grok_build import grok_cli_proxy_default_headers
++
++            self._client_kwargs["default_headers"] = grok_cli_proxy_default_headers(
++                getattr(self, "model", "")
++            )
+         else:
+             # No URL-specific headers — check profile.default_headers before clearing.
+             _ph_headers = None
+diff --git a/tests/hermes_cli/test_xai_grok_build.py b/tests/hermes_cli/test_xai_grok_build.py
+new file mode 100644
+index 000000000..5d4329894
+--- /dev/null
++++ b/tests/hermes_cli/test_xai_grok_build.py
+@@ -0,0 +1,80 @@
++"""Tests for cli-chat-proxy Grok Build / Composer bridge."""
++
++from hermes_cli.xai_grok_build import (
++    DEFAULT_XAI_GROK_BUILD_BASE_URL,
++    _merge_model_ids,
++    _promote_composer_models,
++    fetch_xai_grok_build_models,
++    get_xai_oauth_model_ids,
++    grok_cli_proxy_request_headers,
++    is_xai_grok_build_model,
++    resolve_xai_oauth_inference_base_url,
++)
++
++
++def test_is_xai_grok_build_model_detects_composer_and_build():
++    assert is_xai_grok_build_model("grok-composer-2.5-fast")
++    assert is_xai_grok_build_model("grok-build")
++    assert is_xai_grok_build_model("grok-build-0.1")
++    assert not is_xai_grok_build_model("grok-4.3")
++    assert not is_xai_grok_build_model("")
++
++
++def test_resolve_xai_oauth_inference_base_url_routes_per_model():
++    api_base = "https://api.x.ai/v1"
++    assert resolve_xai_oauth_inference_base_url(
++        "grok-4.3",
++        fallback=api_base,
++    ) == api_base
++    assert resolve_xai_oauth_inference_base_url(
++        "grok-composer-2.5-fast",
++        fallback=api_base,
++    ) == DEFAULT_XAI_GROK_BUILD_BASE_URL
++
++
++def test_grok_cli_proxy_request_headers_include_version_and_override():
++    headers = grok_cli_proxy_request_headers("grok-composer-2.5-fast")
++    assert headers["X-XAI-Token-Auth"] == "xai-grok-cli"
++    assert headers["x-grok-model-override"] == "grok-composer-2.5-fast"
++    assert "x-grok-client-version" in headers
++    assert headers["User-Agent"].startswith("xai-grok-workspace/")
++
++
++def test_fetch_xai_grok_build_models_parses_openai_shape(monkeypatch):
++    class _Resp:
++        def __enter__(self):
++            return self
++
++        def __exit__(self, *args):
++            return False
++
++        def read(self):
++            return b'{"data":[{"id":"grok-build"},{"id":"grok-composer-2.5-fast"}]}'
++
++    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: _Resp())
++
++    models = fetch_xai_grok_build_models("session-token")
++    assert models == ["grok-build", "grok-composer-2.5-fast"]
++
++
++def test_get_xai_oauth_model_ids_merges_build_and_api_catalog(monkeypatch):
++    monkeypatch.setattr(
++        "hermes_cli.models._xai_curated_models",
++        lambda: ["grok-4.3", "grok-4.20-0309-reasoning"],
++    )
++    monkeypatch.setattr(
++        "hermes_cli.xai_grok_build.fetch_xai_grok_build_models",
++        lambda *a, **k: ["grok-build", "grok-composer-2.5-fast"],
++    )
++
++    models = get_xai_oauth_model_ids(access_token="token")
++    assert models[0] == "grok-composer-2.5-fast"
++    assert models[1] == "grok-build"
++    assert "grok-4.3" in models
++
++
++def test_merge_and_promote_helpers():
++    assert _merge_model_ids(["a"], ["b", "a"]) == ["a", "b"]
++    assert _promote_composer_models(
++        ["grok-4.3", "grok-build", "grok-composer-2.5-fast"]
++    ) == ["grok-composer-2.5-fast", "grok-build", "grok-4.3"]
+\ No newline at end of file
