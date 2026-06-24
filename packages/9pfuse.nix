@@ -34,6 +34,50 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [ meson ninja pkg-config fuse-t-pc ];
   buildInputs = [ fuse-t ];
 
+  # execl.c is listed in LICENSE but missing from the release tarball;
+  # also patch meson.build to include it in the build
+  postPatch = ''
+    cat > compat/lib9/execl.c << 'EOF'
+#include <u.h>
+#include <libc.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+int
+p9execl(char *name, ...)
+{
+	va_list ap;
+	char **argv;
+	int argc, i;
+
+	va_start(ap, name);
+	for (argc = 0; va_arg(ap, char *) != nil; argc++)
+		;
+	va_end(ap);
+
+	argv = malloc((argc + 2) * sizeof(char *));
+	if (argv == nil)
+		return -1;
+
+	va_start(ap, name);
+	argv[0] = name;
+	for (i = 1; i <= argc; i++)
+		argv[i] = va_arg(ap, char *);
+	argv[argc + 1] = nil;
+	va_end(ap);
+
+	execv(name, argv);
+	free(argv);
+	return -1;
+}
+EOF
+    substituteInPlace meson.build \
+      --replace "'compat/lib9/waitpid.c'," \
+                "'compat/lib9/waitpid.c',
+  'compat/lib9/execl.c',"
+  '';
+
   meta = with lib; {
     description = "Standalone FUSE-based 9P client from the Plan9 Port project";
     homepage = "https://github.com/aperezdc/9pfuse";
