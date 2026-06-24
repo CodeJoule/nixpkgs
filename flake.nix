@@ -31,6 +31,7 @@
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           amphetamine-enhancer = pkgs.callPackage ./packages/amphetamine-enhancer.nix { };
           macfuse = pkgs.callPackage ./packages/macfuse.nix { };
+          fuse-t = pkgs.callPackage ./packages/fuse-t.nix { };
         });
 
       overlays.default = final: prev: {
