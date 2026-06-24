@@ -73,8 +73,8 @@ p9execl(char *name, ...)
 }
 EOF
     substituteInPlace meson.build \
-      --replace "'compat/lib9/waitpid.c'," \
-                "'compat/lib9/waitpid.c',
+      --replace "  'compat/lib9/waitpid.c'," \
+                "  'compat/lib9/waitpid.c',
   'compat/lib9/execl.c',"
   '';
 
