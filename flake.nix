@@ -30,9 +30,6 @@
         }
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           amphetamine-enhancer = pkgs.callPackage ./packages/amphetamine-enhancer.nix { };
-          macfuse = pkgs.callPackage ./packages/macfuse.nix { };
-          fuse-t = pkgs.callPackage ./packages/fuse-t.nix { };
-          "9pfuse" = pkgs.callPackage ./packages/9pfuse.nix { fuse-t = self.packages.${system}.fuse-t; };
         });
 
       overlays.default = final: prev: {
