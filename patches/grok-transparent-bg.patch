@@ -1,0 +1,349 @@
+diff --git a/crates/codegen/xai-grok-pager-render/src/appearance/cache.rs b/crates/codegen/xai-grok-pager-render/src/appearance/cache.rs
+index bd64f21..d1e99e4 100644
+--- a/crates/codegen/xai-grok-pager-render/src/appearance/cache.rs
++++ b/crates/codegen/xai-grok-pager-render/src/appearance/cache.rs
+@@ -25,6 +25,7 @@ use super::text_selection::TextSelection;
+ // -- Defaults (asserted in tests to match UiConfig::default()) --------------
+ 
+ const COMPACT_DEFAULT: bool = false;
++const TRANSPARENT_BG_DEFAULT: bool = false;
+ const TIMESTAMPS_DEFAULT: bool = true;
+ const SIMPLE_MODE_DEFAULT: bool = true;
+ /// Vim-mode scrollback default — matches the previous on-disk default.
+@@ -77,6 +78,35 @@ pub fn set(enabled: bool) {
+     COMPACT_LOADED.with(|l| l.set(true));
+ }
+ 
++// -- Transparent background --------------------------------------------------
++
++thread_local! {
++    static TRANSPARENT_BG_CURRENT: Cell<bool> = const { Cell::new(TRANSPARENT_BG_DEFAULT) };
++    static TRANSPARENT_BG_LOADED: Cell<bool> = const { Cell::new(false) };
++}
++
++/// Read cached `transparent_bg`, seeding from disk on first call.
++pub fn load_transparent_bg() -> bool {
++    TRANSPARENT_BG_LOADED.with(|loaded| {
++        if !loaded.get() {
++            TRANSPARENT_BG_CURRENT.with(|c| {
++                c.set(load_bool_from_effective_config(
++                    "transparent_bg",
++                    TRANSPARENT_BG_DEFAULT,
++                ))
++            });
++            loaded.set(true);
++        }
++    });
++    TRANSPARENT_BG_CURRENT.with(|c| c.get())
++}
++
++/// Replace cached `transparent_bg` (optimistic update or rollback).
++pub fn set_transparent_bg(enabled: bool) {
++    TRANSPARENT_BG_CURRENT.with(|c| c.set(enabled));
++    TRANSPARENT_BG_LOADED.with(|l| l.set(true));
++}
++
+ // -- Timestamps --------------------------------------------------------------
+ 
+ thread_local! {
+@@ -512,6 +542,7 @@ pub fn set_render_mermaid(value: RenderMermaid) {
+ /// `load*()` calls never hit disk on the render hot path.
+ pub fn prime(ui: &UiConfig) {
+     set(ui.compact_mode);
++    set_transparent_bg(ui.transparent_bg);
+     set_timestamps(ui.show_timestamps.unwrap_or(TIMESTAMPS_DEFAULT));
+     set_simple_mode(ui.simple_mode.unwrap_or(SIMPLE_MODE_DEFAULT));
+     set_keep_text_selection(text_selection_from_ui(ui));
+diff --git a/crates/codegen/xai-grok-pager-render/src/theme/mod.rs b/crates/codegen/xai-grok-pager-render/src/theme/mod.rs
+index 018eae3..a5d7f35 100644
+--- a/crates/codegen/xai-grok-pager-render/src/theme/mod.rs
++++ b/crates/codegen/xai-grok-pager-render/src/theme/mod.rs
+@@ -301,16 +301,44 @@ impl Theme {
+         // explicit gate on the legacy-Windows arm, `ansi16_chrome_overrides`
+         // would repaint `Color::Reset` slots with named ANSI colors and
+         // partially defeat the user's opt-out on ConHost.
+-        if level.has_color()
++        let themed = if level.has_color()
+             && (level == color_support::ColorLevel::Basic
+                 || (crate::glyphs::is_legacy_windows_console() && !level.has_truecolor()))
+         {
+             adapted.ansi16_chrome_overrides(dark)
+         } else {
+             adapted
++        };
++        // Personal overlay: defer canvas/bg paint to the terminal so emulators
++        // like Ghostty can show window opacity/blur through the TUI.
++        if crate::appearance::cache::load_transparent_bg() {
++            themed.with_transparent_background()
++        } else {
++            themed
+         }
+     }
+ 
++    /// Force all background slots to [`Color::Reset`] so the host terminal's
++    /// default canvas (and its opacity) shows through. Accents and text are
++    /// left unchanged — used when `[ui].transparent_bg = true`.
++    #[must_use]
++    pub fn with_transparent_background(mut self) -> Self {
++        use ratatui::style::Color;
++        self.bg_base = Color::Reset;
++        self.bg_light = Color::Reset;
++        self.bg_dark = Color::Reset;
++        self.bg_highlight = Color::Reset;
++        self.bg_hover = Color::Reset;
++        self.bg_terminal = Color::Reset;
++        self.bg_visual = Color::Reset;
++        self.scrollbar_bg = Color::Reset;
++        self.md_code_bg = Color::Reset;
++        self.paste_bg = Color::Reset;
++        self.diff_delete_bg = Color::Reset;
++        self.diff_insert_bg = Color::Reset;
++        self
++    }
++
+     /// Get the currently active theme kind.
+     pub fn current_kind() -> ThemeKind {
+         cache::current_kind()
+diff --git a/crates/codegen/xai-grok-pager/src/app/actions.rs b/crates/codegen/xai-grok-pager/src/app/actions.rs
+index ffba192..d886906 100644
+--- a/crates/codegen/xai-grok-pager/src/app/actions.rs
++++ b/crates/codegen/xai-grok-pager/src/app/actions.rs
+@@ -504,6 +504,8 @@ pub enum Action {
+     ToggleCompactMode,
+     /// Set compact mode (reduce user message padding).
+     SetCompactMode(bool),
++    /// Set transparent theme backgrounds (defer canvas to terminal opacity).
++    SetTransparentBg(bool),
+     /// Set timestamp display on messages.
+     SetTimestamps(bool),
+     /// Set simple mode (ASCII / minimal glyphs). Persists via `Effect::PersistSetting`.
+diff --git a/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs b/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs
+index 5f5bcd5..d2a6504 100644
+--- a/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs
++++ b/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs
+@@ -75,7 +75,7 @@ use super::settings::setters::{
+     clear_default_model, clear_fork_secondary_model, preview_auto_dark_theme,
+     preview_auto_light_theme, preview_theme, set_ask_user_question_timeout_enabled,
+     set_auto_dark_theme, set_auto_light_theme, set_auto_update, set_collapsed_edit_blocks,
+-    set_compact_mode, set_contextual_hint_image_input, set_contextual_hint_plan_mode,
++    set_compact_mode, set_transparent_bg, set_contextual_hint_image_input, set_contextual_hint_plan_mode,
+     set_contextual_hint_send_now, set_contextual_hint_small_screen, set_contextual_hint_undo,
+     set_contextual_hint_word_select, set_default_model, set_default_selected_permission,
+     set_display_refresh_auto_cadence, set_fork_secondary_model, set_group_tool_verbs,
+@@ -923,6 +923,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
+         Action::SetMultilineMode(v) => set_multiline_mode(app, v),
+         Action::SetRenderMermaid(kind) => set_render_mermaid(app, kind),
+         Action::SetCompactMode(v) => set_compact_mode(app, v),
++        Action::SetTransparentBg(v) => set_transparent_bg(app, v),
+         Action::SetTimestamps(v) => set_timestamps(app, v),
+         Action::SetSimpleMode(v) => set_simple_mode(app, v),
+         Action::SetContextualHintUndo(v) => set_contextual_hint_undo(app, v),
+diff --git a/crates/codegen/xai-grok-pager/src/app/dispatch/settings/setters.rs b/crates/codegen/xai-grok-pager/src/app/dispatch/settings/setters.rs
+index 08a91e6..a814cad 100644
+--- a/crates/codegen/xai-grok-pager/src/app/dispatch/settings/setters.rs
++++ b/crates/codegen/xai-grok-pager/src/app/dispatch/settings/setters.rs
+@@ -817,6 +817,30 @@ pub(in crate::app::dispatch) fn set_compact_mode(app: &mut AppView, new: bool) -
+     }]
+ }
+ 
++/// State-only mutation for `transparent_bg`. Updates `current_ui` and the
++/// appearance cache used by `Theme::current()` every frame.
++pub(super) fn set_transparent_bg_inner(app: &mut AppView, new: bool) {
++    app.current_ui.transparent_bg = new;
++    crate::appearance::cache::set_transparent_bg(new);
++}
++
++/// Set transparent background mode. Idempotent: skips if `new == prev`.
++pub(in crate::app::dispatch) fn set_transparent_bg(app: &mut AppView, new: bool) -> Vec<Effect> {
++    let prev = app.current_ui.transparent_bg;
++    if prev == new {
++        return vec![];
++    }
++    set_transparent_bg_inner(app, new);
++    refresh_open_settings_modals(app);
++    tracing::info!(target: "settings", key = "transparent_bg", value = new, "setting changed");
++    app.show_toast(&save_success_toast("Transparent background", new));
++    vec![Effect::PersistSetting {
++        key: "transparent_bg",
++        value: crate::settings::SettingValue::Bool(new),
++        rollback_value: crate::settings::SettingValue::Bool(prev),
++    }]
++}
++
+ /// State-only mutation for `show_timestamps`. Idempotent fast path
+ /// mirrors `set_compact_mode_inner`.
+ pub(super) fn set_timestamps_inner(app: &mut AppView, new: bool) {
+diff --git a/crates/codegen/xai-grok-pager/src/app/dispatch/settings/ui.rs b/crates/codegen/xai-grok-pager/src/app/dispatch/settings/ui.rs
+index 797fefc..4e8d9be 100644
+--- a/crates/codegen/xai-grok-pager/src/app/dispatch/settings/ui.rs
++++ b/crates/codegen/xai-grok-pager/src/app/dispatch/settings/ui.rs
+@@ -3,7 +3,8 @@
+ use super::setters::{
+     pr13_effective_default, set_ask_user_question_timeout_enabled_inner, set_auto_dark_theme_inner,
+     set_auto_light_theme_inner, set_auto_update_inner, set_collapsed_edit_blocks_inner,
+-    set_compact_mode, set_compact_mode_inner, set_contextual_hint_inner, set_default_model_inner,
++    set_compact_mode, set_compact_mode_inner, set_transparent_bg_inner, set_contextual_hint_inner,
++    set_default_model_inner,
+     set_default_selected_permission_inner, set_display_refresh_auto_cadence_inner,
+     set_fork_secondary_model_inner, set_group_tool_verbs_inner, set_hunk_tracker_mode_inner,
+     set_invert_scroll_inner, set_keep_text_selection_inner, set_max_thoughts_width_inner,
+@@ -685,6 +686,7 @@ pub(in crate::app::dispatch) fn action_for_reset(
+     use crate::settings::SettingValue;
+     match (key, value) {
+         ("compact_mode", SettingValue::Bool(b)) => Some(Action::SetCompactMode(*b)),
++        ("transparent_bg", SettingValue::Bool(b)) => Some(Action::SetTransparentBg(*b)),
+         ("show_timestamps", SettingValue::Bool(b)) => Some(Action::SetTimestamps(*b)),
+         ("simple_mode", SettingValue::Bool(b)) => Some(Action::SetSimpleMode(*b)),
+         ("contextual_hints.undo", SettingValue::Bool(b)) => Some(Action::SetContextualHintUndo(*b)),
+@@ -869,6 +871,7 @@ pub(in crate::app::dispatch) fn apply_setting_rollback(
+     let mut companion_effects: Vec<Effect> = Vec::new();
+     match (key, rollback_value) {
+         ("compact_mode", SettingValue::Bool(b)) => set_compact_mode_inner(app, *b),
++        ("transparent_bg", SettingValue::Bool(b)) => set_transparent_bg_inner(app, *b),
+         ("show_timestamps", SettingValue::Bool(b)) => set_timestamps_inner(app, *b),
+         ("simple_mode", SettingValue::Bool(b)) => set_simple_mode_inner(app, *b),
+         ("contextual_hints.undo", SettingValue::Bool(b)) => {
+diff --git a/crates/codegen/xai-grok-pager/src/app/dispatch/tests/settings.rs b/crates/codegen/xai-grok-pager/src/app/dispatch/tests/settings.rs
+index 276a0be..b23b851 100644
+--- a/crates/codegen/xai-grok-pager/src/app/dispatch/tests/settings.rs
++++ b/crates/codegen/xai-grok-pager/src/app/dispatch/tests/settings.rs
+@@ -1137,6 +1137,9 @@ fn move_setting_away_from_default(app: &mut AppView, key: crate::settings::Setti
+         "compact_mode" => {
+             let _ = dispatch(Action::SetCompactMode(true), app);
+         }
++        "transparent_bg" => {
++            let _ = dispatch(Action::SetTransparentBg(true), app);
++        }
+         "show_timestamps" => {
+             let _ = dispatch(Action::SetTimestamps(false), app);
+         }
+diff --git a/crates/codegen/xai-grok-pager/src/app/effects/helpers.rs b/crates/codegen/xai-grok-pager/src/app/effects/helpers.rs
+index 6ad5efc..2d759f8 100644
+--- a/crates/codegen/xai-grok-pager/src/app/effects/helpers.rs
++++ b/crates/codegen/xai-grok-pager/src/app/effects/helpers.rs
+@@ -761,6 +761,14 @@ pub(crate) async fn persist_setting(
+                 .await
+                 .map_err(|e| e.to_string())
+         }
++        "transparent_bg" => {
++            let SettingValue::Bool(b) = value else {
++                return Err(kind_mismatch("transparent_bg", "Bool", &value));
++            };
++            xai_grok_shell::util::config::set_transparent_bg(b)
++                .await
++                .map_err(|e| e.to_string())
++        }
+         "show_timestamps" => {
+             let SettingValue::Bool(b) = value else {
+                 return Err(kind_mismatch("show_timestamps", "Bool", &value));
+diff --git a/crates/codegen/xai-grok-pager/src/settings/defs.rs b/crates/codegen/xai-grok-pager/src/settings/defs.rs
+index 6344357..95e7907 100644
+--- a/crates/codegen/xai-grok-pager/src/settings/defs.rs
++++ b/crates/codegen/xai-grok-pager/src/settings/defs.rs
+@@ -525,6 +525,29 @@ pub fn default_settings() -> Vec<SettingMeta> {
+             restart_required: false,
+             hidden_in_minimal: false,
+         },
++        SettingMeta {
++            key: "transparent_bg",
++            category: SettingCategory::Appearance,
++            owner: SettingOwner::Shared,
++            label: "Transparent background",
++            description: "Leave theme canvas backgrounds unpainted (Color::Reset) so \
++                          terminal opacity/blur (e.g. Ghostty) shows through. Keeps \
++                          theme accents and text colors.",
++            keywords: &[
++                "transparent",
++                "transparency",
++                "opacity",
++                "background",
++                "ghostty",
++                "blur",
++                "glass",
++            ],
++            kind: SettingKind::Bool {
++                default: ui_default.transparent_bg,
++            },
++            restart_required: false,
++            hidden_in_minimal: false,
++        },
+         SettingMeta {
+             key: "show_timestamps",
+             category: SettingCategory::Appearance,
+diff --git a/crates/codegen/xai-grok-pager/src/settings/registry.rs b/crates/codegen/xai-grok-pager/src/settings/registry.rs
+index dd7c798..a2c0181 100644
+--- a/crates/codegen/xai-grok-pager/src/settings/registry.rs
++++ b/crates/codegen/xai-grok-pager/src/settings/registry.rs
+@@ -472,6 +472,7 @@ pub fn current_value_for(
+     match key {
+         // SHARED — UiConfig source of truth, pager keeps a cache.
+         "compact_mode" => Some(SettingValue::Bool(ui.compact_mode)),
++        "transparent_bg" => Some(SettingValue::Bool(ui.transparent_bg)),
+         "show_timestamps" => Some(SettingValue::Bool(ui.show_timestamps.unwrap_or(true))),
+         "simple_mode" => Some(SettingValue::Bool(ui.simple_mode.unwrap_or(true))),
+         // Per-tip contextual hints — `None` (inherit) reads as the default ON.
+@@ -697,6 +698,12 @@ mod tests {
+                         "compact_mode default drifts from UiConfig::default()"
+                     );
+                 }
++                ("transparent_bg", SettingKind::Bool { default }) => {
++                    assert_eq!(
++                        *default, ui.transparent_bg,
++                        "transparent_bg default drifts from UiConfig::default()"
++                    );
++                }
+                 // Per-tip contextual hints: `None` (inherit) → default ON.
+                 ("contextual_hints.undo", SettingKind::Bool { default }) => {
+                     assert_eq!(
+diff --git a/crates/codegen/xai-grok-pager/src/views/settings_modal.rs b/crates/codegen/xai-grok-pager/src/views/settings_modal.rs
+index 3cc556d..735a076 100644
+--- a/crates/codegen/xai-grok-pager/src/views/settings_modal.rs
++++ b/crates/codegen/xai-grok-pager/src/views/settings_modal.rs
+@@ -642,6 +642,7 @@ fn build_rows(registry: &SettingsRegistry) -> Vec<RowEntry> {
+ fn action_for_bool(key: SettingKey, new: bool) -> Option<Action> {
+     match key {
+         "compact_mode" => Some(Action::SetCompactMode(new)),
++        "transparent_bg" => Some(Action::SetTransparentBg(new)),
+         "show_timestamps" => Some(Action::SetTimestamps(new)),
+         "simple_mode" => Some(Action::SetSimpleMode(new)),
+         "contextual_hints.undo" => Some(Action::SetContextualHintUndo(new)),
+diff --git a/crates/codegen/xai-grok-shared/src/ui_config.rs b/crates/codegen/xai-grok-shared/src/ui_config.rs
+index 8c5fca8..37b69ef 100644
+--- a/crates/codegen/xai-grok-shared/src/ui_config.rs
++++ b/crates/codegen/xai-grok-shared/src/ui_config.rs
+@@ -19,6 +19,11 @@ pub struct UiConfig {
+     /// Compact mode. Read by pager, declared here for `serde_ignored`.
+     #[serde(default)]
+     pub compact_mode: bool,
++    /// When true, theme canvas backgrounds (`bg_*`) paint as `Color::Reset`
++    /// so the host terminal (Ghostty opacity/blur, etc.) shows through while
++    /// accents and text keep the selected theme's RGB. Default off.
++    #[serde(default)]
++    pub transparent_bg: bool,
+     /// Simple mode. Read by pager, declared here for `serde_ignored`.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub simple_mode: Option<bool>,
+@@ -234,6 +239,7 @@ impl Default for UiConfig {
+             yolo: false,
+             ui_theme: None,
+             compact_mode: false,
++            transparent_bg: false,
+             simple_mode: None,
+             permission_mode: None,
+             approval_mode: None,
+diff --git a/crates/codegen/xai-grok-shell/src/util/config/settings_writes.rs b/crates/codegen/xai-grok-shell/src/util/config/settings_writes.rs
+index 20d0961..3ce2bf8 100644
+--- a/crates/codegen/xai-grok-shell/src/util/config/settings_writes.rs
++++ b/crates/codegen/xai-grok-shell/src/util/config/settings_writes.rs
+@@ -11,6 +11,11 @@ pub async fn set_compact_mode(value: bool) -> Result<()> {
+     update_config(|cfg| cfg.ui.compact_mode = value).await
+ }
+ 
++/// Persist `[ui].transparent_bg` via `update_config`.
++pub async fn set_transparent_bg(value: bool) -> Result<()> {
++    update_config(|cfg| cfg.ui.transparent_bg = value).await
++}
++
+ /// Persist `[ui].show_timestamps` via `update_config`. `UiConfig::show_timestamps`
+ /// is `Option<bool>` — pager-side `None` means "use default" — so we wrap.
+ pub async fn set_show_timestamps(value: bool) -> Result<()> {
