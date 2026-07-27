@@ -1,5 +1,5 @@
 {
-  description = "Personal packages — patched forge, grok (transparent_bg), amphetamine-enhancer, Hermes patches";
+  description = "Personal packages — patched forge, grok (transparent_bg + /transparency), amphetamine-enhancer, Hermes patches";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";

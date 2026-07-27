@@ -15,13 +15,13 @@
 
 let
   # Pinned open-source tree (xai-org/grok-build). Bump rev + hash together.
-  rev = "3af4d5d39897855bdcc74f23e690024a5dc05573";
-  version = "0.2.109-transparent+${builtins.substring 0 7 rev}";
+  rev = "02d9359435d0e9c20a20945679389cdce441e431";
+  version = "0.2.112-transparent+${builtins.substring 0 7 rev}";
   src = fetchFromGitHub {
     owner = "xai-org";
     repo = "grok-build";
     inherit rev;
-    hash = "sha256-5cfPwL0b1tHXU3CY9vzgDO5u0B2tQHLpnlo8lZHWr9E=";
+    hash = "sha256-LBq9PS6jB4+GTcZ+fOEX/QdfYKrSE2bmAVij+vB6ZPk=";
   };
 in
 rustPlatform.buildRustPackage {
@@ -71,7 +71,7 @@ rustPlatform.buildRustPackage {
   '';
 
   meta = {
-    description = "Grok Build (from source) with transparent_bg theme option";
+    description = "Grok Build (from source) with transparent_bg + /transparency toggle";
     homepage = "https://github.com/xai-org/grok-build";
     license = lib.licenses.asl20;
     mainProgram = "grok";
