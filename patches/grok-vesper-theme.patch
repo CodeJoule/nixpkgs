@@ -1,0 +1,256 @@
+diff --git a/crates/codegen/xai-grok-pager-render/src/syntax.rs b/crates/codegen/xai-grok-pager-render/src/syntax.rs
+index 7de80cb..30c2593 100644
+--- a/crates/codegen/xai-grok-pager-render/src/syntax.rs
++++ b/crates/codegen/xai-grok-pager-render/src/syntax.rs
+@@ -148,6 +148,7 @@ pub fn get_syntect() -> &'static Syntect {
+         ThemeKind::GrokNight
+         | ThemeKind::RosePineMoon
+         | ThemeKind::OscuraMidnight
++        | ThemeKind::Vesper
+         | ThemeKind::Auto => SYNTECT_GROKNIGHT
+             .get_or_init(|| Syntect::new(include_bytes!("../assets/grok-night.tmTheme"))),
+         ThemeKind::TokyoNight => SYNTECT_TOKYONIGHT
+diff --git a/crates/codegen/xai-grok-pager-render/src/theme/cache.rs b/crates/codegen/xai-grok-pager-render/src/theme/cache.rs
+index a1b23e0..e70c2ac 100644
+--- a/crates/codegen/xai-grok-pager-render/src/theme/cache.rs
++++ b/crates/codegen/xai-grok-pager-render/src/theme/cache.rs
+@@ -47,6 +47,7 @@ fn theme_kind_from_u8(byte: u8) -> ThemeKind {
+         x if x == ThemeKind::TokyoNight as u8 => ThemeKind::TokyoNight,
+         x if x == ThemeKind::RosePineMoon as u8 => ThemeKind::RosePineMoon,
+         x if x == ThemeKind::OscuraMidnight as u8 => ThemeKind::OscuraMidnight,
++        x if x == ThemeKind::Vesper as u8 => ThemeKind::Vesper,
+         x if x == ThemeKind::Auto as u8 => ThemeKind::Auto,
+         _ => ThemeKind::GrokNight,
+     }
+diff --git a/crates/codegen/xai-grok-pager-render/src/theme/mod.rs b/crates/codegen/xai-grok-pager-render/src/theme/mod.rs
+index 018eae3..abffd08 100644
+--- a/crates/codegen/xai-grok-pager-render/src/theme/mod.rs
++++ b/crates/codegen/xai-grok-pager-render/src/theme/mod.rs
+@@ -20,6 +20,7 @@ mod oscura;
+ mod rosepine;
+ pub mod system_appearance;
+ mod terminal_default;
++mod vesper;
+ pub mod tokyonight;
+ 
+ pub use color_support::quantize;
+@@ -33,6 +34,8 @@ pub enum ThemeKind {
+     TokyoNight = 2,
+     RosePineMoon = 3,
+     OscuraMidnight = 5,
++    /// Vesper — monochrome dark with peach + mint accents (from Herdr).
++    Vesper = 6,
+     /// Meta-variant: follow system dark/light appearance.
+     ///
+     /// Never stored in `cache::CURRENT` — resolved to a concrete
+@@ -51,6 +54,7 @@ impl ThemeKind {
+         ThemeKind::TokyoNight,
+         ThemeKind::RosePineMoon,
+         ThemeKind::OscuraMidnight,
++        ThemeKind::Vesper,
+     ];
+ 
+     /// Theme kinds available on the current terminal.
+@@ -78,6 +82,7 @@ impl ThemeKind {
+             Self::GrokDay => "grokday",
+             Self::RosePineMoon => "rosepine-moon",
+             Self::OscuraMidnight => "oscura-midnight",
++            Self::Vesper => "vesper",
+             Self::Auto => "auto",
+         }
+     }
+@@ -94,6 +99,8 @@ impl ThemeKind {
+             Self::GrokDay => false,
+             Self::RosePineMoon => true,
+             Self::OscuraMidnight => true,
++            // Monochrome RGB base; peach/mint accents need truecolor.
++            Self::Vesper => true,
+             // Auto is resolved to a concrete theme before rendering.
+             Self::Auto => false,
+         }
+@@ -112,6 +119,7 @@ impl ThemeKind {
+                 Some(Self::RosePineMoon)
+             }
+             "oscura" | "oscura-midnight" => Some(Self::OscuraMidnight),
++            "vesper" => Some(Self::Vesper),
+             _ => None,
+         }
+     }
+@@ -147,6 +155,8 @@ pub fn display_name_for_canonical(value: &str) -> &str {
+         "grokday" => "Grok Day",
+         "tokyonight" => "Tokyo Night",
+         "rosepine-moon" => "Rose Pine Moon",
++        "oscura-midnight" => "Oscura Midnight",
++        "vesper" => "Vesper",
+         other => other,
+     }
+ }
+@@ -275,6 +285,7 @@ impl Theme {
+             ThemeKind::GrokDay => Self::grokday(),
+             ThemeKind::RosePineMoon => Self::rosepine_moon(),
+             ThemeKind::OscuraMidnight => Self::oscura_midnight(),
++            ThemeKind::Vesper => Self::vesper(),
+             // Auto is resolved to a concrete theme before being stored;
+             // if reached, fall back to GrokNight.
+             ThemeKind::Auto => Self::groknight(),
+@@ -684,6 +695,7 @@ mod tests {
+         assert!(!ThemeKind::TokyoNight.is_auto());
+         assert!(!ThemeKind::RosePineMoon.is_auto());
+         assert!(!ThemeKind::OscuraMidnight.is_auto());
++        assert!(!ThemeKind::Vesper.is_auto());
+     }
+ 
+     #[test]
+@@ -703,6 +715,7 @@ mod tests {
+         assert!(Theme::tokyonight().is_dark());
+         assert!(Theme::rosepine_moon().is_dark());
+         assert!(Theme::oscura_midnight().is_dark());
++        assert!(Theme::vesper().is_dark());
+         assert!(!Theme::grokday().is_dark());
+     }
+ 
+diff --git a/crates/codegen/xai-grok-pager-render/src/theme/vesper.rs b/crates/codegen/xai-grok-pager-render/src/theme/vesper.rs
+new file mode 100644
+index 0000000..0f3c01c
+--- /dev/null
++++ b/crates/codegen/xai-grok-pager-render/src/theme/vesper.rs
+@@ -0,0 +1,127 @@
++use ratatui::style::{Color, Modifier};
++
++use super::tokyonight::Theme;
++
++const fn rgb(r: u8, g: u8, b: u8) -> Color {
++    Color::Rgb(r, g, b)
++}
++
++/// Vesper palette — ported from Herdr's built-in theme
++/// (`ogulcancelik/herdr` `Palette::vesper`).
++///
++/// Minimal high-contrast monochrome base with peach and mint accents.
++#[allow(dead_code)]
++mod palette {
++    use super::*;
++
++    // -- backgrounds (near-black monochrome ramp) -----------------------------
++    pub const BASE: Color = rgb(26, 26, 26); // #1A1A1A  panel_bg
++    pub const SURFACE: Color = rgb(16, 16, 16); // #101010  surface_dim
++    pub const ELEVATED: Color = rgb(40, 40, 40); // #282828  surface1
++    pub const HIGHLIGHT: Color = rgb(35, 35, 35); // #232323  surface0
++
++    // -- text -----------------------------------------------------------------
++    pub const TEXT: Color = rgb(255, 255, 255); // #FFFFFF
++    pub const SUBTEXT: Color = rgb(160, 160, 160); // #A0A0A0
++
++    // -- muted / overlays -----------------------------------------------------
++    pub const MUTED: Color = rgb(92, 92, 92); // #5C5C5C  overlay0
++    pub const SUBTLE: Color = rgb(126, 126, 126); // #7E7E7E  overlay1
++
++    // -- accents (peach + mint) -----------------------------------------------
++    pub const PEACH: Color = rgb(255, 199, 153); // #FFC799  accent / yellow / peach
++    pub const PEACH_BRIGHT: Color = rgb(255, 209, 168); // #FFD1A8  mauve
++    pub const MINT: Color = rgb(153, 255, 228); // #99FFE4  green
++    pub const TEAL: Color = rgb(102, 221, 204); // #66DDCC
++    pub const RED: Color = rgb(255, 128, 128); // #FF8080
++    pub const GRAY_BLUE: Color = rgb(176, 176, 176); // #B0B0B0  blue
++}
++use palette::*;
++
++impl Theme {
++    pub const fn vesper() -> Self {
++        Self {
++            bg_base: BASE,
++            bg_light: ELEVATED,
++            bg_dark: SURFACE,
++            bg_highlight: HIGHLIGHT,
++            bg_hover: ELEVATED,
++            bg_terminal: BASE,
++
++            accent_user: PEACH,
++            accent_assistant: MINT,
++            accent_thinking: MUTED,
++            accent_tool: SUBTLE,
++            accent_system: GRAY_BLUE,
++            accent_error: RED,
++            accent_success: MINT,
++            accent_running: TEAL,
++            accent_skill: PEACH_BRIGHT,
++
++            text_primary: TEXT,
++            text_secondary: SUBTEXT,
++
++            gray_dim: MUTED,
++            gray: SUBTLE,
++            gray_bright: SUBTEXT,
++
++            command: PEACH,
++            path: PEACH_BRIGHT,
++            running: TEAL,
++            warning: PEACH,
++
++            fuzzy_accent: PEACH,
++
++            accent_plan: PEACH,
++
++            accent_verify: TEAL,
++
++            accent_feedback: MINT,
++
++            accent_remember: MINT,
++
++            selection_border: ELEVATED,
++            hover_border: HIGHLIGHT,
++            prompt_border: HIGHLIGHT,
++            prompt_border_active: SUBTLE,
++
++            accent_model: GRAY_BLUE,
++
++            scrollbar_bg: SURFACE,
++            scrollbar_fg: ELEVATED,
++
++            diff_delete_bg: rgb(48, 20, 20),
++            diff_delete_fg: RED,
++            diff_insert_bg: rgb(16, 40, 34),
++            diff_insert_fg: MINT,
++            diff_equal_fg: MUTED,
++            diff_gutter_fg: MUTED,
++
++            bg_visual: HIGHLIGHT,
++
++            paste_bg: HIGHLIGHT,
++            paste_fg: SUBTEXT,
++            paste_dim: MUTED,
++
++            md_heading_h1: TEXT,
++            md_heading_h1_mod: Modifier::BOLD,
++            md_heading_h2: PEACH,
++            md_heading_h2_mod: Modifier::BOLD,
++            md_heading_h3: MINT,
++            md_heading_h3_mod: Modifier::BOLD,
++            md_heading_h4: TEAL,
++            md_heading_h4_mod: Modifier::BOLD.union(Modifier::ITALIC),
++            md_heading_h5: PEACH_BRIGHT,
++            md_heading_h5_mod: Modifier::BOLD,
++            md_heading_h6: GRAY_BLUE,
++            md_heading_h6_mod: Modifier::BOLD,
++            md_code: TEAL,
++            md_task_checked: MINT,
++            md_task_unchecked: SUBTEXT,
++            md_muted: MUTED,
++            md_code_bg: HIGHLIGHT,
++            md_text: TEXT,
++            link_fg: TEAL,
++        }
++    }
++}
+diff --git a/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs b/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs
+index a24c5b4..d103427 100644
+--- a/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs
++++ b/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs
+@@ -6708,6 +6708,7 @@ fn max_thoughts_width_preview_title_styling_distinguishes_from_content() {
+         // Resolved via `Theme::current()` rather than a constructor
+         // because `theme::oscura` is a private module.
+         crate::theme::ThemeKind::OscuraMidnight => crate::theme::Theme::current(),
++        crate::theme::ThemeKind::Vesper => crate::theme::Theme::vesper(),
+         crate::theme::ThemeKind::Auto => crate::theme::Theme::groknight(),
+     };
+     assert_ne!(

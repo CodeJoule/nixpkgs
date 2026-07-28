@@ -11,12 +11,13 @@
 , apple-sdk
 , openssl
 , patchTransparentBg
+, patchVesperTheme
 }:
 
 let
   # Pinned open-source tree (xai-org/grok-build). Bump rev + hash together.
   rev = "02d9359435d0e9c20a20945679389cdce441e431";
-  version = "0.2.112-transparent+${builtins.substring 0 7 rev}";
+  version = "0.2.112-transparent+vesper+${builtins.substring 0 7 rev}";
   src = fetchFromGitHub {
     owner = "xai-org";
     repo = "grok-build";
@@ -28,7 +29,8 @@ rustPlatform.buildRustPackage {
   pname = "grok";
   inherit version src;
 
-  patches = [ patchTransparentBg ];
+  # transparent_bg first (touches Theme::current); vesper second (ThemeKind + palette).
+  patches = [ patchTransparentBg patchVesperTheme ];
 
   cargoLock = {
     lockFile = "${src}/Cargo.lock";
@@ -58,7 +60,7 @@ rustPlatform.buildRustPackage {
   OPENSSL_NO_VENDOR = "1";
 
   # Full workspace test suite is huge and needs network/fixtures; we only
-  # care about a working binary with the transparency patch.
+  # care about a working binary with the transparency + Vesper patches.
   doCheck = false;
 
   postInstall = ''
@@ -71,7 +73,7 @@ rustPlatform.buildRustPackage {
   '';
 
   meta = {
-    description = "Grok Build (from source) with transparent_bg + /transparency toggle";
+    description = "Grok Build (from source) with transparent_bg, /transparency, and Vesper theme";
     homepage = "https://github.com/xai-org/grok-build";
     license = lib.licenses.asl20;
     mainProgram = "grok";
