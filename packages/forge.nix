@@ -23,13 +23,13 @@ let
   src = fetchFromGitHub {
     owner = "tailcallhq";
     repo = "forgecode";
-    rev = "v2.13.14";
-    hash = "sha256-yRqsRJ9T4pAqKXv8DNGowXeu0kTPnIVGI09/zRp9gkE=";
+    rev = "v2.13.19";
+    hash = "sha256-kTlClThEXhPexEQGXZWo9JtymcB0mqMsJKyjuXNqc7E=";
   };
 in
 rustPlatform.buildRustPackage {
   pname = "forge";
-  version = "2.13.14";
+  version = "2.13.19";
   inherit src;
 
   patches = [ patchSupergrok ];
@@ -61,7 +61,7 @@ rustPlatform.buildRustPackage {
 
   PROTOC = "${protobuf}/bin/protoc";
   PROTOC_INCLUDE = "${protobuf}/include";
-  APP_VERSION = "2.13.14";
+  APP_VERSION = "2.13.19";
 
   doCheck = false;
 
