@@ -132,7 +132,7 @@ index 0000000..0f3c01c
 +    use super::*;
 +
 +    // -- backgrounds (near-black monochrome ramp) -----------------------------
-+    pub const BASE: Color = rgb(26, 26, 26); // #1A1A1A  panel_bg
++    pub const BASE: Color = rgb(16, 16, 16); // #101010  editor.background
 +    pub const SURFACE: Color = rgb(16, 16, 16); // #101010  surface_dim
 +    pub const ELEVATED: Color = rgb(40, 40, 40); // #282828  surface1
 +    pub const HIGHLIGHT: Color = rgb(35, 35, 35); // #232323  surface0
@@ -142,16 +142,16 @@ index 0000000..0f3c01c
 +    pub const SUBTEXT: Color = rgb(160, 160, 160); // #A0A0A0
 +
 +    // -- muted / overlays -----------------------------------------------------
-+    pub const MUTED: Color = rgb(92, 92, 92); // #5C5C5C  overlay0
-+    pub const SUBTLE: Color = rgb(126, 126, 126); // #7E7E7E  overlay1
++    pub const MUTED: Color = rgb(80, 80, 80); // #505050  editorLineNumber
++    pub const SUBTLE: Color = rgb(139, 139, 139); // #8B8B8B  comments
 +
 +    // -- accents (peach + mint) -----------------------------------------------
 +    pub const PEACH: Color = rgb(255, 199, 153); // #FFC799  accent / yellow / peach
 +    pub const PEACH_BRIGHT: Color = rgb(255, 209, 168); // #FFD1A8  mauve
 +    pub const MINT: Color = rgb(153, 255, 228); // #99FFE4  green
-+    pub const TEAL: Color = rgb(102, 221, 204); // #66DDCC
++    pub const TEAL: Color = rgb(153, 255, 228); // #99FFE4  (Vesper has no teal)
 +    pub const RED: Color = rgb(255, 128, 128); // #FF8080
-+    pub const GRAY_BLUE: Color = rgb(176, 176, 176); // #B0B0B0  blue
++    pub const GRAY_BLUE: Color = rgb(160, 160, 160); // #A0A0A0  (no blue in Vesper)
 +}
 +use palette::*;
 +
@@ -200,21 +200,21 @@ index 0000000..0f3c01c
 +            selection_border: ELEVATED,
 +            hover_border: HIGHLIGHT,
 +            prompt_border: HIGHLIGHT,
-+            prompt_border_active: SUBTLE,
++            prompt_border_active: PEACH,
 +
 +            accent_model: GRAY_BLUE,
 +
 +            scrollbar_bg: SURFACE,
-+            scrollbar_fg: ELEVATED,
++            scrollbar_fg: rgb(52, 52, 52),
 +
-+            diff_delete_bg: rgb(48, 20, 20),
++            diff_delete_bg: rgb(36, 25, 25),
 +            diff_delete_fg: RED,
-+            diff_insert_bg: rgb(16, 40, 34),
++            diff_insert_bg: rgb(27, 36, 33),
 +            diff_insert_fg: MINT,
 +            diff_equal_fg: MUTED,
 +            diff_gutter_fg: MUTED,
 +
-+            bg_visual: HIGHLIGHT,
++            bg_visual: rgb(51, 51, 51),
 +
 +            paste_bg: HIGHLIGHT,
 +            paste_fg: SUBTEXT,
@@ -238,7 +238,7 @@ index 0000000..0f3c01c
 +            md_muted: MUTED,
 +            md_code_bg: HIGHLIGHT,
 +            md_text: TEXT,
-+            link_fg: TEAL,
++            link_fg: PEACH,
 +        }
 +    }
 +}

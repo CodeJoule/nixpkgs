@@ -12,12 +12,13 @@
 , openssl
 , patchTransparentBg
 , patchVesperTheme
+, patchVoiceOptSpace
 }:
 
 let
   # Pinned open-source tree (xai-org/grok-build). Bump rev + hash together.
   rev = "5da6962e4adb9c857f3def762542b52b4ec3e522";
-  version = "0.2.112-transparent+vesper+${builtins.substring 0 7 rev}";
+  version = "0.2.112-transparent+vesper+optspace+${builtins.substring 0 7 rev}";
   src = fetchFromGitHub {
     owner = "xai-org";
     repo = "grok-build";
@@ -29,8 +30,8 @@ rustPlatform.buildRustPackage {
   pname = "grok";
   inherit version src;
 
-  # transparent_bg first (touches Theme::current); vesper second (ThemeKind + palette).
-  patches = [ patchTransparentBg patchVesperTheme ];
+  # transparent_bg → vesper → voice chord (Opt/Alt+Space instead of Ctrl+Space).
+  patches = [ patchTransparentBg patchVesperTheme patchVoiceOptSpace ];
 
   cargoLock = {
     lockFile = "${src}/Cargo.lock";
@@ -60,7 +61,7 @@ rustPlatform.buildRustPackage {
   OPENSSL_NO_VENDOR = "1";
 
   # Full workspace test suite is huge and needs network/fixtures; we only
-  # care about a working binary with the transparency + Vesper patches.
+  # care about a working binary with the personal patches applied.
   doCheck = false;
 
   postInstall = ''
@@ -73,7 +74,7 @@ rustPlatform.buildRustPackage {
   '';
 
   meta = {
-    description = "Grok Build (from source) with transparent_bg, /transparency, and Vesper theme";
+    description = "Grok Build (from source) with transparent_bg, Vesper theme, Opt+Space voice";
     homepage = "https://github.com/xai-org/grok-build";
     license = lib.licenses.asl20;
     mainProgram = "grok";

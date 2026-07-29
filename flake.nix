@@ -1,5 +1,5 @@
 {
-  description = "Personal packages — patched forge, grok (transparent_bg + Vesper theme), amphetamine-enhancer, Hermes patches";
+  description = "Personal packages — patched forge, grok (transparent_bg + Vesper + Opt+Space voice), amphetamine-enhancer, Hermes patches";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -18,6 +18,7 @@
       patchSupergrok = ./patches/forge-supergrok.patch;
       patchGrokTransparentBg = ./patches/grok-transparent-bg.patch;
       patchGrokVesperTheme = ./patches/grok-vesper-theme.patch;
+      patchGrokVoiceOptSpace = ./patches/grok-voice-opt-space.patch;
     in
     {
       packages = forAllSystems (system:
@@ -27,6 +28,7 @@
           grok = pkgs.callPackage ./packages/grok.nix {
             patchTransparentBg = patchGrokTransparentBg;
             patchVesperTheme = patchGrokVesperTheme;
+            patchVoiceOptSpace = patchGrokVoiceOptSpace;
           };
           mlx-prism = pkgs.callPackage ./packages/mlx-prism.nix { };
         in
@@ -40,7 +42,7 @@
 
       overlays.default = final: prev: {
         forge-supergrok = self.packages.${prev.system}.forge;
-        # Source-built grok with transparent_bg + Vesper theme (replaces prebuilt).
+        # Source-built grok with transparent_bg, Vesper, Opt+Space voice.
         grok = self.packages.${prev.system}.grok;
       };
     };
