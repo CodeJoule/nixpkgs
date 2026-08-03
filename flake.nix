@@ -15,7 +15,10 @@
         "x86_64-linux"
       ];
       forAllSystems = lib.genAttrs systems;
-      patchSupergrok = ./patches/forge-supergrok.patch;
+      # Paused (not currently used — Homebrew's forgecode cask covers this
+      # instead). Left wired below, commented, so re-enabling later is a
+      # one-line uncomment; packages/forge.nix pin is kept up to date.
+      # patchSupergrok = ./patches/forge-supergrok.patch;
       patchGrokTransparentBg = ./patches/grok-transparent-bg.patch;
       patchGrokVesperTheme = ./patches/grok-vesper-theme.patch;
       patchGrokVoiceOptSpace = ./patches/grok-voice-opt-space.patch;
@@ -24,7 +27,7 @@
       packages = forAllSystems (system:
         let
           pkgs = import nixpkgs { inherit system; };
-          forge = pkgs.callPackage ./packages/forge.nix { inherit patchSupergrok; };
+          # forge = pkgs.callPackage ./packages/forge.nix { inherit patchSupergrok; };
           grok = pkgs.callPackage ./packages/grok.nix {
             patchTransparentBg = patchGrokTransparentBg;
             patchVesperTheme = patchGrokVesperTheme;
@@ -33,15 +36,15 @@
           mlx-prism = pkgs.callPackage ./packages/mlx-prism.nix { };
         in
         {
-          default = forge;
-          inherit forge grok mlx-prism;
+          default = grok;
+          inherit grok mlx-prism;
         }
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           amphetamine-enhancer = pkgs.callPackage ./packages/amphetamine-enhancer.nix { };
         });
 
       overlays.default = final: prev: {
-        forge-supergrok = self.packages.${prev.system}.forge;
+        # forge-supergrok = self.packages.${prev.system}.forge;
         # Source-built grok with transparent_bg, Vesper, Opt+Space voice.
         grok = self.packages.${prev.system}.grok;
       };
