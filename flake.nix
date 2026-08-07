@@ -34,10 +34,11 @@
             patchVoiceOptSpace = patchGrokVoiceOptSpace;
           };
           mlx-prism = pkgs.callPackage ./packages/mlx-prism.nix { };
+          warp-agent-cli = pkgs.callPackage ./packages/warp-agent-cli.nix { };
         in
         {
           default = grok;
-          inherit grok mlx-prism;
+          inherit grok mlx-prism warp-agent-cli;
         }
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           amphetamine-enhancer = pkgs.callPackage ./packages/amphetamine-enhancer.nix { };
