@@ -26,7 +26,7 @@
     {
       packages = forAllSystems (system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
           # forge = pkgs.callPackage ./packages/forge.nix { inherit patchSupergrok; };
           grok = pkgs.callPackage ./packages/grok.nix {
             patchTransparentBg = patchGrokTransparentBg;
