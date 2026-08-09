@@ -1,5 +1,5 @@
 diff --git a/crates/codegen/xai-grok-pager/src/actions/defaults.rs b/crates/codegen/xai-grok-pager/src/actions/defaults.rs
-index bd5ba33..86c3942 100644
+index 1ecfbae..352f49d 100644
 --- a/crates/codegen/xai-grok-pager/src/actions/defaults.rs
 +++ b/crates/codegen/xai-grok-pager/src/actions/defaults.rs
 @@ -661,7 +661,7 @@ pub(super) fn default_actions(
@@ -48,10 +48,10 @@ index bd5ba33..86c3942 100644
          },
          // Prompt history has no key chord (Ctrl+R is deliberately unbound):
 diff --git a/crates/codegen/xai-grok-pager/src/app/actions.rs b/crates/codegen/xai-grok-pager/src/app/actions.rs
-index 8c9b9bb..814800b 100644
+index cd6c045..7b400b3 100644
 --- a/crates/codegen/xai-grok-pager/src/app/actions.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/actions.rs
-@@ -166,16 +166,16 @@ pub enum Action {
+@@ -174,16 +174,16 @@ pub enum Action {
          /// Pasted images riding along with the prompt.
          images: Vec<crate::prompt_images::PastedImage>,
      },
@@ -72,7 +72,7 @@ index 8c9b9bb..814800b 100644
      /// any pending cold-start so a release during pipeline spawn can't leave a
      /// hot mic.
      VoiceStop,
-@@ -509,12 +509,12 @@ pub enum Action {
+@@ -517,12 +517,12 @@ pub enum Action {
      SetHunkTrackerMode(String),
      /// Set default screen mode (`fullscreen` | `minimal`); restart-required.
      SetScreenMode(String),
@@ -88,19 +88,19 @@ index 8c9b9bb..814800b 100644
      /// Set the voice STT language (catalog code or `auto`). SHELL-owned; persisted
      /// to `[ui].voice_stt_language`. Takes effect for the next voice capture.
 diff --git a/crates/codegen/xai-grok-pager/src/app/event_loop.rs b/crates/codegen/xai-grok-pager/src/app/event_loop.rs
-index 0f44df3..b336b0a 100644
+index 6e68d2c..e1534e3 100644
 --- a/crates/codegen/xai-grok-pager/src/app/event_loop.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/event_loop.rs
-@@ -1844,7 +1844,7 @@ pub(crate) async fn run(
-             &mut suspend_wait_reports,
-         )?;
+@@ -1923,7 +1923,7 @@ pub(crate) async fn run(
+             return Err(e);
+         }
  
 -        // Lazy voice pipeline: only after `/voice` or Ctrl+Space while gates
 +        // Lazy voice pipeline: only after `/voice` or Opt+Space while gates
          // allow. Consume the queued cold-start, carrying its hold-ownership and
          // bound target forward into the live recording it spawns.
          if let VoiceState::ColdStart { hold, target } = app.voice_state {
-@@ -1862,7 +1862,7 @@ pub(crate) async fn run(
+@@ -1941,7 +1941,7 @@ pub(crate) async fn run(
                  app.voice_auth = Some(voice_auth);
                  app.voice_cmd_tx = Some(cmd_tx);
                  voice_rx = Some(event_rx);
@@ -109,7 +109,7 @@ index 0f44df3..b336b0a 100644
                  // The spawn is async, so begin capture now the pipeline is live
                  // — but only if the user is still on a surface that can receive
                  // dictation (an agent prompt or the dashboard dispatch input).
-@@ -3165,11 +3165,11 @@ async fn drain_and_process(
+@@ -3311,11 +3311,11 @@ async fn drain_and_process(
              }
              _ => {}
          }
@@ -123,7 +123,7 @@ index 0f44df3..b336b0a 100644
          // hold-to-talk without eating every Space release during normal typing.
          // `[ui].voice_keybind_enabled` (read live, like `voice_capture_mode`)
          // silences chord presses without touching `/voice` — see
-@@ -3448,16 +3448,16 @@ fn voice_chord_claims_event(kind: KeyEventKind, keybind_enabled: bool, hold_owne
+@@ -3594,16 +3594,16 @@ fn voice_chord_claims_event(kind: KeyEventKind, keybind_enabled: bool, hold_owne
      kind != KeyEventKind::Release && keybind_enabled
  }
  
@@ -144,7 +144,7 @@ index 0f44df3..b336b0a 100644
                  || (ke.code == KeyCode::F(8) && ke.modifiers.is_empty())
          }
      }
-@@ -3729,17 +3729,17 @@ mod tests {
+@@ -4141,17 +4141,17 @@ mod tests {
                  state: KeyEventState::NONE,
              })
          };
@@ -168,7 +168,7 @@ index 0f44df3..b336b0a 100644
          assert!(hit(sp, none, Release) && hit(f8, none, Release));
          assert!(!hit(KeyCode::Char('a'), none, Release));
 diff --git a/crates/codegen/xai-grok-pager/src/settings/defs.rs b/crates/codegen/xai-grok-pager/src/settings/defs.rs
-index be928ce..06f2c7d 100644
+index f64bf83..0540362 100644
 --- a/crates/codegen/xai-grok-pager/src/settings/defs.rs
 +++ b/crates/codegen/xai-grok-pager/src/settings/defs.rs
 @@ -324,12 +324,12 @@ const VOICE_CAPTURE_MODE_CHOICES: &[EnumChoice] = &[
@@ -186,7 +186,7 @@ index be928ce..06f2c7d 100644
      },
  ];
  
-@@ -1356,14 +1356,14 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1393,14 +1393,14 @@ pub fn default_settings() -> Vec<SettingMeta> {
              hidden_in_minimal: false,
          },
          // SHELL-owned, persisted to `[ui].voice_keybind_enabled`. Default ON —
@@ -203,7 +203,7 @@ index be928ce..06f2c7d 100644
                            When off, the keys are ignored; /voice still starts \
                            dictation.",
              keywords: &[
-@@ -1375,7 +1375,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1412,7 +1412,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
                  "stt",
                  "keybinding",
                  "hotkey",
@@ -213,7 +213,7 @@ index be928ce..06f2c7d 100644
                  "f8",
                  "disable",
              ],
-@@ -1393,7 +1394,7 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1430,7 +1431,7 @@ pub fn default_settings() -> Vec<SettingMeta> {
              category: SettingCategory::Editor,
              owner: SettingOwner::Shell,
              label: "Voice capture",
@@ -222,7 +222,7 @@ index be928ce..06f2c7d 100644
                            (press to start/stop) or Hold to talk (hold to record, \
                            release to stop; needs a Kitty-protocol terminal).",
              keywords: &[
-@@ -1406,7 +1407,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1443,7 +1444,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
                  "stt",
                  "toggle",
                  "hold",
@@ -233,10 +233,10 @@ index be928ce..06f2c7d 100644
                  "push-to-talk",
              ],
 diff --git a/crates/codegen/xai-grok-pager/src/views/shortcuts_help.rs b/crates/codegen/xai-grok-pager/src/views/shortcuts_help.rs
-index 5873a8e..a838fe3 100644
+index 4ace5ea..4ac4a39 100644
 --- a/crates/codegen/xai-grok-pager/src/views/shortcuts_help.rs
 +++ b/crates/codegen/xai-grok-pager/src/views/shortcuts_help.rs
-@@ -177,10 +177,10 @@ pub fn build_entries(
+@@ -194,10 +194,10 @@ pub fn build_entries(
              if def.default_key == crate::key!(Null) && def.alt_keys.is_empty() {
                  continue;
              }

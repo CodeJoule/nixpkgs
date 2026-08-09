@@ -11,10 +11,10 @@ index 7de80cb..30c2593 100644
              .get_or_init(|| Syntect::new(include_bytes!("../assets/grok-night.tmTheme"))),
          ThemeKind::TokyoNight => SYNTECT_TOKYONIGHT
 diff --git a/crates/codegen/xai-grok-pager-render/src/theme/cache.rs b/crates/codegen/xai-grok-pager-render/src/theme/cache.rs
-index a1b23e0..e70c2ac 100644
+index 3a7b2f9..a4f9371 100644
 --- a/crates/codegen/xai-grok-pager-render/src/theme/cache.rs
 +++ b/crates/codegen/xai-grok-pager-render/src/theme/cache.rs
-@@ -47,6 +47,7 @@ fn theme_kind_from_u8(byte: u8) -> ThemeKind {
+@@ -48,6 +48,7 @@ fn theme_kind_from_u8(byte: u8) -> ThemeKind {
          x if x == ThemeKind::TokyoNight as u8 => ThemeKind::TokyoNight,
          x if x == ThemeKind::RosePineMoon as u8 => ThemeKind::RosePineMoon,
          x if x == ThemeKind::OscuraMidnight as u8 => ThemeKind::OscuraMidnight,
@@ -23,10 +23,10 @@ index a1b23e0..e70c2ac 100644
          _ => ThemeKind::GrokNight,
      }
 diff --git a/crates/codegen/xai-grok-pager-render/src/theme/mod.rs b/crates/codegen/xai-grok-pager-render/src/theme/mod.rs
-index 018eae3..abffd08 100644
+index 0c34bc0..8f280da 100644
 --- a/crates/codegen/xai-grok-pager-render/src/theme/mod.rs
 +++ b/crates/codegen/xai-grok-pager-render/src/theme/mod.rs
-@@ -20,6 +20,7 @@ mod oscura;
+@@ -21,6 +21,7 @@ mod oscura;
  mod rosepine;
  pub mod system_appearance;
  mod terminal_default;
@@ -34,7 +34,7 @@ index 018eae3..abffd08 100644
  pub mod tokyonight;
  
  pub use color_support::quantize;
-@@ -33,6 +34,8 @@ pub enum ThemeKind {
+@@ -34,6 +35,8 @@ pub enum ThemeKind {
      TokyoNight = 2,
      RosePineMoon = 3,
      OscuraMidnight = 5,
@@ -43,7 +43,7 @@ index 018eae3..abffd08 100644
      /// Meta-variant: follow system dark/light appearance.
      ///
      /// Never stored in `cache::CURRENT` — resolved to a concrete
-@@ -51,6 +54,7 @@ impl ThemeKind {
+@@ -52,6 +55,7 @@ impl ThemeKind {
          ThemeKind::TokyoNight,
          ThemeKind::RosePineMoon,
          ThemeKind::OscuraMidnight,
@@ -51,7 +51,7 @@ index 018eae3..abffd08 100644
      ];
  
      /// Theme kinds available on the current terminal.
-@@ -78,6 +82,7 @@ impl ThemeKind {
+@@ -79,6 +83,7 @@ impl ThemeKind {
              Self::GrokDay => "grokday",
              Self::RosePineMoon => "rosepine-moon",
              Self::OscuraMidnight => "oscura-midnight",
@@ -59,7 +59,7 @@ index 018eae3..abffd08 100644
              Self::Auto => "auto",
          }
      }
-@@ -94,6 +99,8 @@ impl ThemeKind {
+@@ -95,6 +100,8 @@ impl ThemeKind {
              Self::GrokDay => false,
              Self::RosePineMoon => true,
              Self::OscuraMidnight => true,
@@ -68,7 +68,7 @@ index 018eae3..abffd08 100644
              // Auto is resolved to a concrete theme before rendering.
              Self::Auto => false,
          }
-@@ -112,6 +119,7 @@ impl ThemeKind {
+@@ -113,6 +120,7 @@ impl ThemeKind {
                  Some(Self::RosePineMoon)
              }
              "oscura" | "oscura-midnight" => Some(Self::OscuraMidnight),
@@ -76,7 +76,7 @@ index 018eae3..abffd08 100644
              _ => None,
          }
      }
-@@ -147,6 +155,8 @@ pub fn display_name_for_canonical(value: &str) -> &str {
+@@ -148,6 +156,8 @@ pub fn display_name_for_canonical(value: &str) -> &str {
          "grokday" => "Grok Day",
          "tokyonight" => "Tokyo Night",
          "rosepine-moon" => "Rose Pine Moon",
@@ -85,7 +85,7 @@ index 018eae3..abffd08 100644
          other => other,
      }
  }
-@@ -275,6 +285,7 @@ impl Theme {
+@@ -274,6 +284,7 @@ impl Theme {
              ThemeKind::GrokDay => Self::grokday(),
              ThemeKind::RosePineMoon => Self::rosepine_moon(),
              ThemeKind::OscuraMidnight => Self::oscura_midnight(),
@@ -93,7 +93,7 @@ index 018eae3..abffd08 100644
              // Auto is resolved to a concrete theme before being stored;
              // if reached, fall back to GrokNight.
              ThemeKind::Auto => Self::groknight(),
-@@ -684,6 +695,7 @@ mod tests {
+@@ -734,6 +745,7 @@ mod tests {
          assert!(!ThemeKind::TokyoNight.is_auto());
          assert!(!ThemeKind::RosePineMoon.is_auto());
          assert!(!ThemeKind::OscuraMidnight.is_auto());
@@ -101,7 +101,7 @@ index 018eae3..abffd08 100644
      }
  
      #[test]
-@@ -703,6 +715,7 @@ mod tests {
+@@ -753,6 +765,7 @@ mod tests {
          assert!(Theme::tokyonight().is_dark());
          assert!(Theme::rosepine_moon().is_dark());
          assert!(Theme::oscura_midnight().is_dark());
@@ -111,10 +111,10 @@ index 018eae3..abffd08 100644
  
 diff --git a/crates/codegen/xai-grok-pager-render/src/theme/vesper.rs b/crates/codegen/xai-grok-pager-render/src/theme/vesper.rs
 new file mode 100644
-index 0000000..0f3c01c
+index 0000000..bf3fa73
 --- /dev/null
 +++ b/crates/codegen/xai-grok-pager-render/src/theme/vesper.rs
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,125 @@
 +use ratatui::style::{Color, Modifier};
 +
 +use super::tokyonight::Theme;
@@ -193,8 +193,6 @@ index 0000000..0f3c01c
 +
 +            accent_verify: TEAL,
 +
-+            accent_feedback: MINT,
-+
 +            accent_remember: MINT,
 +
 +            selection_border: ELEVATED,
@@ -243,10 +241,10 @@ index 0000000..0f3c01c
 +    }
 +}
 diff --git a/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs b/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs
-index a24c5b4..d103427 100644
+index 747eab5..c984458 100644
 --- a/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs
 +++ b/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs
-@@ -6708,6 +6708,7 @@ fn max_thoughts_width_preview_title_styling_distinguishes_from_content() {
+@@ -7162,6 +7162,7 @@ fn max_thoughts_width_preview_title_styling_distinguishes_from_content() {
          // Resolved via `Theme::current()` rather than a constructor
          // because `theme::oscura` is a private module.
          crate::theme::ThemeKind::OscuraMidnight => crate::theme::Theme::current(),
