@@ -6,24 +6,24 @@
 }:
 
 let
-  version = "0.2026.08.04.02.19.stable_01";
+  version = "0.2026.08.05.09.03.stable_01";
 
   sources = {
     aarch64-darwin = {
       url = "https://releases.warp.dev/stable/v${version}/tui/macos/aarch64/warp-tui-stable-macos-aarch64.tar.gz";
-      hash = "sha256-Sp3UnTKcZTJDf9E8HbXgEEKaqylJzffnAJxQ3rWHnNM=";
+      hash = "sha256-xdriuCeHCJJk3kv+NvZvnHtMnb0Aa8uYVdfwrfjLGHc=";
     };
     x86_64-darwin = {
       url = "https://releases.warp.dev/stable/v${version}/tui/macos/x86_64/warp-tui-stable-macos-x86_64.tar.gz";
-      hash = "sha256-bn9cAVPVt13UESeDJXONtACdxxNtJOXFLG/tDJVP2e4=";
+      hash = "sha256-nZcQb8HQBk65ev8rHGJbUjYSfXBUo5HfGQFO31JAxqc=";
     };
     aarch64-linux = {
       url = "https://releases.warp.dev/stable/v${version}/tui/linux/aarch64/warp-tui-stable-linux-aarch64.tar.gz";
-      hash = "sha256-zq7Z1jt+Z+i+6+0It/laojJkWbOnWVA3kYduYBaavho=";
+      hash = "sha256-9qXXwuw1fvGzkuny4kWgXNOJ4ePKAlwdYAhFXs/X+Xo=";
     };
     x86_64-linux = {
       url = "https://releases.warp.dev/stable/v${version}/tui/linux/x86_64/warp-tui-stable-linux-x86_64.tar.gz";
-      hash = "sha256-LmN4z83Vmw1mW+XlgXC5/+NI0WOlaGvZDQMBc4T0C3A=";
+      hash = "sha256-5rnKxkR/vX0UcwD9WC/4jHr+c1nxfxp0r93kePvND1w=";
     };
   };
 

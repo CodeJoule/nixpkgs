@@ -48,10 +48,10 @@ index 1ecfbae..352f49d 100644
          },
          // Prompt history has no key chord (Ctrl+R is deliberately unbound):
 diff --git a/crates/codegen/xai-grok-pager/src/app/actions.rs b/crates/codegen/xai-grok-pager/src/app/actions.rs
-index cd6c045..7b400b3 100644
+index f0986eb..0917968 100644
 --- a/crates/codegen/xai-grok-pager/src/app/actions.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/actions.rs
-@@ -174,16 +174,16 @@ pub enum Action {
+@@ -175,16 +175,16 @@ pub enum Action {
          /// Pasted images riding along with the prompt.
          images: Vec<crate::prompt_images::PastedImage>,
      },
@@ -72,7 +72,7 @@ index cd6c045..7b400b3 100644
      /// any pending cold-start so a release during pipeline spawn can't leave a
      /// hot mic.
      VoiceStop,
-@@ -517,12 +517,12 @@ pub enum Action {
+@@ -518,12 +518,12 @@ pub enum Action {
      SetHunkTrackerMode(String),
      /// Set default screen mode (`fullscreen` | `minimal`); restart-required.
      SetScreenMode(String),

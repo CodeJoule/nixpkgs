@@ -105,10 +105,10 @@ index fff8675..0c34bc0 100644
      pub fn current_kind() -> ThemeKind {
          cache::current_kind()
 diff --git a/crates/codegen/xai-grok-pager/src/app/actions.rs b/crates/codegen/xai-grok-pager/src/app/actions.rs
-index 2cf1f34..cd6c045 100644
+index d3ae87c..f0986eb 100644
 --- a/crates/codegen/xai-grok-pager/src/app/actions.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/actions.rs
-@@ -533,6 +533,10 @@ pub enum Action {
+@@ -534,6 +534,10 @@ pub enum Action {
      ToggleCompactMode,
      /// Set compact mode (reduce user message padding).
      SetCompactMode(bool),
@@ -120,7 +120,7 @@ index 2cf1f34..cd6c045 100644
      SetTimestamps(bool),
      /// Set timeline sidebar visibility (per-turn tick rail).
 diff --git a/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs b/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs
-index 19e014c..f0667e3 100644
+index b432beb..2ecd525 100644
 --- a/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs
 @@ -85,14 +85,14 @@ use super::settings::setters::{
@@ -141,7 +141,7 @@ index 19e014c..f0667e3 100644
  };
  use super::status::{
      dispatch_copy_session_id, dispatch_manage_billing, dispatch_open_gboom, dispatch_open_tutorial,
-@@ -1034,6 +1034,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
+@@ -1035,6 +1035,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
          Action::ToggleYolo => dispatch_toggle_yolo(app),
          Action::ToggleMultiline => dispatch_toggle_multiline(app),
          Action::ToggleCompactMode => dispatch_toggle_compact_mode(app),
@@ -149,7 +149,7 @@ index 19e014c..f0667e3 100644
          Action::ToggleVimMode => dispatch_toggle_vim_mode(app),
          Action::SetVimMode(v) => set_vim_mode(app, v),
          Action::SetRememberToolApprovals(v) => set_remember_tool_approvals(app, v),
-@@ -1062,6 +1063,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
+@@ -1063,6 +1064,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
          Action::SetMultilineMode(v) => set_multiline_mode(app, v),
          Action::SetRenderMermaid(kind) => set_render_mermaid(app, kind),
          Action::SetCompactMode(v) => set_compact_mode(app, v),
@@ -333,7 +333,7 @@ index c719471..cb6597b 100644
                  ("contextual_hints.undo", SettingKind::Bool { default }) => {
                      assert_eq!(
 diff --git a/crates/codegen/xai-grok-pager/src/slash/commands/mod.rs b/crates/codegen/xai-grok-pager/src/slash/commands/mod.rs
-index 2b60c83..afc96fd 100644
+index a838cc6..30a366e 100644
 --- a/crates/codegen/xai-grok-pager/src/slash/commands/mod.rs
 +++ b/crates/codegen/xai-grok-pager/src/slash/commands/mod.rs
 @@ -63,6 +63,7 @@ pub mod theme;

@@ -111,7 +111,7 @@ index 0c34bc0..8f280da 100644
  
 diff --git a/crates/codegen/xai-grok-pager-render/src/theme/vesper.rs b/crates/codegen/xai-grok-pager-render/src/theme/vesper.rs
 new file mode 100644
-index 0000000..bf3fa73
+index 0000000..359bb6c
 --- /dev/null
 +++ b/crates/codegen/xai-grok-pager-render/src/theme/vesper.rs
 @@ -0,0 +1,125 @@
