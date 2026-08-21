@@ -43,6 +43,12 @@
         }
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           amphetamine-enhancer = pkgs.callPackage ./packages/amphetamine-enhancer.nix { };
+        }
+        # Prebuilt Darwin-only release; no aarch64-linux/x86_64-darwin artifact
+        # is packaged yet, so keep it off those systems rather than letting
+        # eval fail in packages/tode.nix.
+        // lib.optionalAttrs (system == "aarch64-darwin") {
+          tode = pkgs.callPackage ./packages/tode.nix { };
         });
 
       overlays.default = final: prev: {
