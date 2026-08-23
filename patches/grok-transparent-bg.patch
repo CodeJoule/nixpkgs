@@ -1,8 +1,8 @@
 diff --git a/crates/codegen/xai-grok-pager-render/src/appearance/cache.rs b/crates/codegen/xai-grok-pager-render/src/appearance/cache.rs
-index dd23d33..cf779b2 100644
+index 553ac14..8d8c863 100644
 --- a/crates/codegen/xai-grok-pager-render/src/appearance/cache.rs
 +++ b/crates/codegen/xai-grok-pager-render/src/appearance/cache.rs
-@@ -25,6 +25,7 @@ use super::text_selection::TextSelection;
+@@ -26,6 +26,7 @@ use super::text_selection::TextSelection;
  // -- Defaults (asserted in tests to match UiConfig::default()) --------------
  
  const COMPACT_DEFAULT: bool = false;
@@ -10,7 +10,7 @@ index dd23d33..cf779b2 100644
  const TIMESTAMPS_DEFAULT: bool = true;
  /// Timeline sidebar (per-turn tick rail): single source of truth is
  /// [`UiConfig::SHOW_TIMELINE_DEFAULT`]; aliased here for the `Cell::new`
-@@ -84,6 +85,35 @@ pub fn set(enabled: bool) {
+@@ -86,6 +87,35 @@ pub fn set(enabled: bool) {
      COMPACT_LOADED.with(|l| l.set(true));
  }
  
@@ -46,7 +46,7 @@ index dd23d33..cf779b2 100644
  // -- Timestamps --------------------------------------------------------------
  
  thread_local! {
-@@ -603,6 +633,7 @@ pub fn set_render_mermaid(value: RenderMermaid) {
+@@ -659,6 +689,7 @@ pub fn set_render_mermaid(value: RenderMermaid) {
  /// `load*()` calls never hit disk on the render hot path.
  pub fn prime(ui: &UiConfig) {
      set(ui.compact_mode);
@@ -105,10 +105,10 @@ index fff8675..0c34bc0 100644
      pub fn current_kind() -> ThemeKind {
          cache::current_kind()
 diff --git a/crates/codegen/xai-grok-pager/src/app/actions.rs b/crates/codegen/xai-grok-pager/src/app/actions.rs
-index d3ae87c..f0986eb 100644
+index 943d5fd..57987f4 100644
 --- a/crates/codegen/xai-grok-pager/src/app/actions.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/actions.rs
-@@ -534,6 +534,10 @@ pub enum Action {
+@@ -549,6 +549,10 @@ pub enum Action {
      ToggleCompactMode,
      /// Set compact mode (reduce user message padding).
      SetCompactMode(bool),
@@ -120,16 +120,16 @@ index d3ae87c..f0986eb 100644
      SetTimestamps(bool),
      /// Set timeline sidebar visibility (per-turn tick rail).
 diff --git a/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs b/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs
-index b432beb..2ecd525 100644
+index 897952f..f307a2f 100644
 --- a/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/dispatch/router.rs
 @@ -85,14 +85,14 @@ use super::settings::setters::{
-     set_multiline_mode, set_page_flip_on_send, set_prompt_suggestions, set_remember_tool_approvals,
-     set_render_mermaid, set_respect_manual_folds, set_screen_mode, set_scroll_lines,
-     set_scroll_mode, set_scroll_speed, set_show_thinking_blocks, set_show_tips, set_simple_mode,
--    set_theme, set_timeline, set_timestamps, set_vim_mode, set_voice_capture_mode,
+     set_max_thoughts_width, set_multiline_mode, set_page_flip_on_send, set_prompt_suggestions,
+     set_remember_tool_approvals, set_render_mermaid, set_respect_manual_folds, set_screen_mode,
+     set_scroll_lines, set_scroll_mode, set_scroll_speed, set_show_thinking_blocks, set_show_tips,
+-    set_simple_mode, set_theme, set_timeline, set_timestamps, set_vim_mode, set_voice_capture_mode,
 -    set_voice_keybind_enabled, set_voice_stt_language,
-+    set_theme, set_timeline, set_timestamps, set_transparent_bg, set_vim_mode,
++    set_simple_mode, set_theme, set_timeline, set_timestamps, set_transparent_bg, set_vim_mode,
 +    set_voice_capture_mode, set_voice_keybind_enabled, set_voice_stt_language,
  };
  use super::settings::ui::{
@@ -141,7 +141,7 @@ index b432beb..2ecd525 100644
  };
  use super::status::{
      dispatch_copy_session_id, dispatch_manage_billing, dispatch_open_gboom, dispatch_open_tutorial,
-@@ -1035,6 +1035,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
+@@ -1041,6 +1041,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
          Action::ToggleYolo => dispatch_toggle_yolo(app),
          Action::ToggleMultiline => dispatch_toggle_multiline(app),
          Action::ToggleCompactMode => dispatch_toggle_compact_mode(app),
@@ -149,7 +149,7 @@ index b432beb..2ecd525 100644
          Action::ToggleVimMode => dispatch_toggle_vim_mode(app),
          Action::SetVimMode(v) => set_vim_mode(app, v),
          Action::SetRememberToolApprovals(v) => set_remember_tool_approvals(app, v),
-@@ -1063,6 +1064,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
+@@ -1069,6 +1070,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
          Action::SetMultilineMode(v) => set_multiline_mode(app, v),
          Action::SetRenderMermaid(kind) => set_render_mermaid(app, kind),
          Action::SetCompactMode(v) => set_compact_mode(app, v),
@@ -158,7 +158,7 @@ index b432beb..2ecd525 100644
          Action::SetTimeline(v) => set_timeline(app, v),
          Action::SetPageFlipOnSend(v) => set_page_flip_on_send(app, v),
 diff --git a/crates/codegen/xai-grok-pager/src/app/dispatch/settings/setters.rs b/crates/codegen/xai-grok-pager/src/app/dispatch/settings/setters.rs
-index 48df833..fd34c61 100644
+index 02a0b96..0407c74 100644
 --- a/crates/codegen/xai-grok-pager/src/app/dispatch/settings/setters.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/dispatch/settings/setters.rs
 @@ -890,6 +890,30 @@ pub(in crate::app::dispatch) fn set_compact_mode(app: &mut AppView, new: bool) -
@@ -193,22 +193,20 @@ index 48df833..fd34c61 100644
  /// mirrors `set_compact_mode_inner`.
  pub(super) fn set_timestamps_inner(app: &mut AppView, new: bool) {
 diff --git a/crates/codegen/xai-grok-pager/src/app/dispatch/settings/ui.rs b/crates/codegen/xai-grok-pager/src/app/dispatch/settings/ui.rs
-index d0918ec..b0003bf 100644
+index f89930f..2d863be 100644
 --- a/crates/codegen/xai-grok-pager/src/app/dispatch/settings/ui.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/dispatch/settings/ui.rs
-@@ -12,8 +12,9 @@ use super::setters::{
-     set_remember_tool_approvals_inner, set_render_mermaid_inner, set_respect_manual_folds_inner,
-     set_screen_mode_inner, set_scroll_lines_inner, set_scroll_mode_inner, set_scroll_speed_inner,
-     set_show_thinking_blocks_inner, set_show_tips_inner, set_simple_mode_inner, set_theme_inner,
--    set_timeline_inner, set_timestamps, set_timestamps_inner, set_vim_mode_inner,
--    set_voice_capture_mode_inner, set_voice_keybind_enabled_inner, set_voice_stt_language_inner,
-+    set_timeline_inner, set_timestamps, set_timestamps_inner, set_transparent_bg,
-+    set_transparent_bg_inner, set_vim_mode_inner, set_voice_capture_mode_inner,
-+    set_voice_keybind_enabled_inner, set_voice_stt_language_inner,
+@@ -13,7 +13,8 @@ use super::setters::{
+     set_respect_manual_folds_inner, set_screen_mode_inner, set_scroll_lines_inner,
+     set_scroll_mode_inner, set_scroll_speed_inner, set_show_thinking_blocks_inner,
+     set_show_tips_inner, set_simple_mode_inner, set_theme_inner, set_timeline_inner,
+-    set_timestamps, set_timestamps_inner, set_vim_mode_inner, set_voice_capture_mode_inner,
++    set_timestamps, set_timestamps_inner, set_transparent_bg, set_transparent_bg_inner,
++    set_vim_mode_inner, set_voice_capture_mode_inner,
+     set_voice_keybind_enabled_inner, set_voice_stt_language_inner,
  };
  use crate::app::actions::{Action, Effect};
- use crate::app::app_view::{ActiveView, AppView};
-@@ -472,6 +473,15 @@ pub(in crate::app::dispatch) fn dispatch_toggle_compact_mode(app: &mut AppView)
+@@ -473,6 +474,15 @@ pub(in crate::app::dispatch) fn dispatch_toggle_compact_mode(app: &mut AppView)
      set_compact_mode(app, new)
  }
  
@@ -224,7 +222,7 @@ index d0918ec..b0003bf 100644
  /// Toggle vim-style scrollback keybindings (`/vim-mode` slash command path).
  ///
  /// When OFF (default): bare-letter and Shift+letter scrollback bindings
-@@ -755,6 +765,7 @@ pub(in crate::app::dispatch) fn action_for_reset(
+@@ -757,6 +767,7 @@ pub(in crate::app::dispatch) fn action_for_reset(
      use crate::settings::SettingValue;
      match (key, value) {
          ("compact_mode", SettingValue::Bool(b)) => Some(Action::SetCompactMode(*b)),
@@ -232,7 +230,7 @@ index d0918ec..b0003bf 100644
          ("show_timestamps", SettingValue::Bool(b)) => Some(Action::SetTimestamps(*b)),
          ("show_timeline", SettingValue::Bool(b)) => Some(Action::SetTimeline(*b)),
          ("page_flip_on_send", SettingValue::Bool(b)) => Some(Action::SetPageFlipOnSend(*b)),
-@@ -954,6 +965,7 @@ pub(in crate::app::dispatch) fn apply_setting_rollback(
+@@ -959,6 +970,7 @@ pub(in crate::app::dispatch) fn apply_setting_rollback(
      let mut companion_effects: Vec<Effect> = Vec::new();
      match (key, rollback_value) {
          ("compact_mode", SettingValue::Bool(b)) => set_compact_mode_inner(app, *b),
@@ -241,7 +239,7 @@ index d0918ec..b0003bf 100644
          ("show_timeline", SettingValue::Bool(b)) => set_timeline_inner(app, *b),
          ("page_flip_on_send", SettingValue::Bool(b)) => set_page_flip_on_send_inner(app, *b),
 diff --git a/crates/codegen/xai-grok-pager/src/app/dispatch/tests/settings.rs b/crates/codegen/xai-grok-pager/src/app/dispatch/tests/settings.rs
-index bf5f91f..689693c 100644
+index b621614..3418568 100644
 --- a/crates/codegen/xai-grok-pager/src/app/dispatch/tests/settings.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/dispatch/tests/settings.rs
 @@ -1536,6 +1536,9 @@ fn move_setting_away_from_default(app: &mut AppView, key: crate::settings::Setti
@@ -255,10 +253,10 @@ index bf5f91f..689693c 100644
              let _ = dispatch(Action::SetTimestamps(false), app);
          }
 diff --git a/crates/codegen/xai-grok-pager/src/app/effects/helpers.rs b/crates/codegen/xai-grok-pager/src/app/effects/helpers.rs
-index a334a27..5e793ff 100644
+index 79cabf5..01b5fdd 100644
 --- a/crates/codegen/xai-grok-pager/src/app/effects/helpers.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/effects/helpers.rs
-@@ -1061,6 +1061,14 @@ pub(crate) async fn persist_setting(
+@@ -1067,6 +1067,14 @@ pub(crate) async fn persist_setting(
                  .await
                  .map_err(|e| e.to_string())
          }
@@ -274,10 +272,10 @@ index a334a27..5e793ff 100644
              let SettingValue::Bool(b) = value else {
                  return Err(kind_mismatch("show_timestamps", "Bool", &value));
 diff --git a/crates/codegen/xai-grok-pager/src/settings/defs.rs b/crates/codegen/xai-grok-pager/src/settings/defs.rs
-index 642d8c6..f64bf83 100644
+index ff3c94e..17b072d 100644
 --- a/crates/codegen/xai-grok-pager/src/settings/defs.rs
 +++ b/crates/codegen/xai-grok-pager/src/settings/defs.rs
-@@ -542,6 +542,29 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -558,6 +558,29 @@ pub fn default_settings() -> Vec<SettingMeta> {
              restart_required: false,
              hidden_in_minimal: false,
          },
@@ -308,10 +306,10 @@ index 642d8c6..f64bf83 100644
              key: "screen_mode",
              category: SettingCategory::Appearance,
 diff --git a/crates/codegen/xai-grok-pager/src/settings/registry.rs b/crates/codegen/xai-grok-pager/src/settings/registry.rs
-index c719471..cb6597b 100644
+index a21c115..cc25cb1 100644
 --- a/crates/codegen/xai-grok-pager/src/settings/registry.rs
 +++ b/crates/codegen/xai-grok-pager/src/settings/registry.rs
-@@ -510,6 +510,7 @@ pub fn current_value_for(
+@@ -511,6 +511,7 @@ pub fn current_value_for(
      match key {
          // SHARED — UiConfig source of truth, pager keeps a cache.
          "compact_mode" => Some(SettingValue::Bool(ui.compact_mode)),
@@ -319,7 +317,7 @@ index c719471..cb6597b 100644
          "show_timestamps" => Some(SettingValue::Bool(ui.show_timestamps.unwrap_or(true))),
          "show_timeline" => Some(SettingValue::Bool(ui.show_timeline_enabled())),
          // Cache is the send-path source of truth (same pattern as group_tool_verbs).
-@@ -768,6 +769,12 @@ mod tests {
+@@ -775,6 +776,12 @@ mod tests {
                          "compact_mode default drifts from UiConfig::default()"
                      );
                  }
@@ -391,7 +389,7 @@ index 0000000..16c6dfe
 +    }
 +}
 diff --git a/crates/codegen/xai-grok-pager/src/views/settings_modal/state.rs b/crates/codegen/xai-grok-pager/src/views/settings_modal/state.rs
-index 2f13607..7b89b6b 100644
+index 57bfe25..fb4791e 100644
 --- a/crates/codegen/xai-grok-pager/src/views/settings_modal/state.rs
 +++ b/crates/codegen/xai-grok-pager/src/views/settings_modal/state.rs
 @@ -880,6 +880,7 @@ fn build_rows(registry: &SettingsRegistry) -> Vec<RowEntry> {
@@ -403,10 +401,10 @@ index 2f13607..7b89b6b 100644
          "show_timeline" => Some(Action::SetTimeline(new)),
          "simple_mode" => Some(Action::SetSimpleMode(new)),
 diff --git a/crates/codegen/xai-grok-shared/src/ui_config.rs b/crates/codegen/xai-grok-shared/src/ui_config.rs
-index 78d9f2a..ce0cd8c 100644
+index 2c9b204..288312b 100644
 --- a/crates/codegen/xai-grok-shared/src/ui_config.rs
 +++ b/crates/codegen/xai-grok-shared/src/ui_config.rs
-@@ -19,6 +19,11 @@ pub struct UiConfig {
+@@ -21,6 +21,11 @@ pub struct UiConfig {
      /// Compact mode. Read by pager, declared here for `serde_ignored`.
      #[serde(default)]
      pub compact_mode: bool,
@@ -418,7 +416,7 @@ index 78d9f2a..ce0cd8c 100644
      /// Simple mode. Read by pager, declared here for `serde_ignored`.
      #[serde(default, skip_serializing_if = "Option::is_none")]
      pub simple_mode: Option<bool>,
-@@ -254,6 +259,7 @@ impl Default for UiConfig {
+@@ -272,6 +277,7 @@ impl Default for UiConfig {
              yolo: false,
              ui_theme: None,
              compact_mode: false,
@@ -427,10 +425,10 @@ index 78d9f2a..ce0cd8c 100644
              permission_mode: None,
              approval_mode: None,
 diff --git a/crates/codegen/xai-grok-shell/src/util/config/settings_writes.rs b/crates/codegen/xai-grok-shell/src/util/config/settings_writes.rs
-index 5f7d86a..91535f2 100644
+index 8cf5f26..cd50db4 100644
 --- a/crates/codegen/xai-grok-shell/src/util/config/settings_writes.rs
 +++ b/crates/codegen/xai-grok-shell/src/util/config/settings_writes.rs
-@@ -11,6 +11,11 @@ pub async fn set_compact_mode(value: bool) -> Result<()> {
+@@ -90,6 +90,11 @@ pub async fn set_compact_mode(value: bool) -> Result<()> {
      update_config(|cfg| cfg.ui.compact_mode = value).await
  }
  

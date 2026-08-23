@@ -17,13 +17,13 @@
 
 let
   # Pinned open-source tree (xai-org/grok-build). Bump rev + hash together.
-  rev = "be713136d2a69080743a3f6b3c72077057e5948f";
-  version = "0.2.112-transparent+vesper+optspace+${builtins.substring 0 7 rev}";
+  rev = "19d42e35c07a9c9244f03f6df0c4c353f970d4f9";
+  version = "1.0.6-transparent+vesper+optspace+${builtins.substring 0 7 rev}";
   src = fetchFromGitHub {
     owner = "xai-org";
     repo = "grok-build";
     inherit rev;
-    hash = "sha256-WaavzZeGDysmZqr7Hqh8lZb8TcNg5F7WpYsFQPORMbA=";
+    hash = "sha256-Ug2mIx522mLbu3dcv72ngLOSKKPAH8259qBqt+sty4Q=";
   };
 in
 rustPlatform.buildRustPackage {
