@@ -27,13 +27,13 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "fx-agent";
-  version = "0.0.5";
+  version = "0.0.6";
 
   src = fetchFromGitHub {
     owner = "vercel-labs";
     repo = "fx";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-r7fSv4M+rI4kbWyIeW6JsHLQ+WRSaLYwkxkz/16eu7k=";
+    hash = "sha256-KcSMgvMGFbBwVOd6+phbYVWy1OZeHitIlIAnUyvRTeA=";
   };
 
   nativeBuildInputs = [
