@@ -1,3 +1,89 @@
+diff --git a/crates/codegen/xai-grok-pager-render/src/terminal/kitty_keyboard.rs b/crates/codegen/xai-grok-pager-render/src/terminal/kitty_keyboard.rs
+index 3eebbe1..bf51c7c 100644
+--- a/crates/codegen/xai-grok-pager-render/src/terminal/kitty_keyboard.rs
++++ b/crates/codegen/xai-grok-pager-render/src/terminal/kitty_keyboard.rs
+@@ -73,6 +73,18 @@ pub fn negotiated_kitty_flags(
+         da2_packed.is_some_and(|packed| packed <= ALACRITTY_BROKEN_EVENT_TYPES_MAX_PACKED);
+     if !mis_encodes_releases {
+         flags |= KeyboardEnhancementFlags::REPORT_EVENT_TYPES;
++        // `REPORT_EVENT_TYPES` alone does not make *every* key report a
++        // release. Under the Kitty spec a text-producing key with no modifier
++        // is still sent as plain UTF-8, and a plain byte carries no event type,
++        // so a bare Space arrives as one indistinguishable press and never
++        // reports a release. Promoting it to a CSI-u sequence is what
++        // `REPORT_ALL_KEYS_AS_ESCAPE_CODES` is for; `/gboom` pushes the same bit
++        // for the same reason (see `push_gboom_keyboard_flags`).
++        //
++        // Hold-Space push-to-talk is built on that release: without this bit its
++        // wait window can only ever time out, and every Space *tap* is then
++        // misread as a hold and opens the mic instead of typing a space.
++        flags |= KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES;
+     }
+     flags
+ }
+@@ -112,6 +124,19 @@ pub fn kitty_releases_reported() -> bool {
+     pushed_kitty_flags().contains(KeyboardEnhancementFlags::REPORT_EVENT_TYPES)
+ }
+ 
++/// Whether press *and* release are reported for plain text keys — the bare
++/// Space that hold-to-talk keys off. Deliberately not
++/// [`kitty_releases_reported`], which covers only keys already sent as escape
++/// codes (F8, Ctrl+Space) and is therefore true even in sessions where a bare
++/// Space reports nothing on release. Every bare-Space hold gate must read this
++/// one, so that a session without the bit degrades to "Space types a space"
++/// rather than "Space opens the mic".
++pub fn kitty_all_keys_reported() -> bool {
++    let flags = pushed_kitty_flags();
++    flags.contains(KeyboardEnhancementFlags::REPORT_EVENT_TYPES)
++        && flags.contains(KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES)
++}
++
+ /// Whether the version workaround engaged: pushed, but without
+ /// `REPORT_EVENT_TYPES`. Not `!kitty_releases_reported()`, which is also true
+ /// when nothing was pushed at all.
+@@ -132,6 +157,10 @@ mod tests {
+     const DISAMBIGUATE: KeyboardEnhancementFlags =
+         KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES;
+     const EVENT_TYPES: KeyboardEnhancementFlags = KeyboardEnhancementFlags::REPORT_EVENT_TYPES;
++    /// Paired with `EVENT_TYPES` on every healthy session: hold-Space needs a
++    /// bare Space to report a release, which plain-UTF-8 delivery cannot do.
++    const ALL_KEYS: KeyboardEnhancementFlags =
++        KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES;
+ 
+     /// The exact boundary a careless `<`/`<=` edit breaks: `alacritty_terminal`
+     /// 0.24.1 is Alacritty 0.14.0 (broken), 0.24.2 is 0.15.0 (fixed).
+@@ -141,7 +170,7 @@ mod tests {
+         assert_eq!(negotiated_kitty_flags(None, Some(2401)), DISAMBIGUATE);
+         assert_eq!(
+             negotiated_kitty_flags(None, Some(2402)),
+-            DISAMBIGUATE | EVENT_TYPES
++            DISAMBIGUATE | EVENT_TYPES | ALL_KEYS
+         );
+     }
+ 
+@@ -151,7 +180,7 @@ mod tests {
+     fn absent_version_does_not_downgrade() {
+         assert_eq!(
+             negotiated_kitty_flags(None, None),
+-            DISAMBIGUATE | EVENT_TYPES
++            DISAMBIGUATE | EVENT_TYPES | ALL_KEYS
+         );
+     }
+ 
+diff --git a/crates/codegen/xai-grok-pager-render/src/terminal/mod.rs b/crates/codegen/xai-grok-pager-render/src/terminal/mod.rs
+index d9fac41..067ff2d 100644
+--- a/crates/codegen/xai-grok-pager-render/src/terminal/mod.rs
++++ b/crates/codegen/xai-grok-pager-render/src/terminal/mod.rs
+@@ -33,7 +33,8 @@ pub use keyboard::{
+     keyboard_capabilities_for_host,
+ };
+ pub use kitty_keyboard::{
+-    kitty_event_types_withheld, kitty_flags_pushed, kitty_releases_reported,
++    kitty_all_keys_reported, kitty_event_types_withheld, kitty_flags_pushed,
++    kitty_releases_reported,
+     negotiated_kitty_flags, pushed_kitty_flags, set_pushed_kitty_flags, take_kitty_flags_pushed,
+ };
+ pub use term_version::{TermVersion, TermVersionSource};
 diff --git a/crates/codegen/xai-grok-pager/src/actions/defaults.rs b/crates/codegen/xai-grok-pager/src/actions/defaults.rs
 index 5f4906e..5385d5c 100644
 --- a/crates/codegen/xai-grok-pager/src/actions/defaults.rs
@@ -95,7 +181,7 @@ index 069f299..26e41f5 100644
      /// Set the voice STT language (catalog code or `auto`). SHELL-owned; persisted to `[ui].voice_stt_language`.
      /// Takes effect for the next voice capture.
 diff --git a/crates/codegen/xai-grok-pager/src/app/event_loop.rs b/crates/codegen/xai-grok-pager/src/app/event_loop.rs
-index edb4e30..74b0a70 100644
+index edb4e30..effbdca 100644
 --- a/crates/codegen/xai-grok-pager/src/app/event_loop.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/event_loop.rs
 @@ -2184,8 +2184,9 @@ pub(crate) async fn run(
@@ -119,7 +205,7 @@ index edb4e30..74b0a70 100644
                  // The spawn is async, so begin capture now the pipeline is live
                  // But only if the user is still somewhere that can receive dictation (an agent prompt or the dashboard dispatch input)
                  // This runs at loop-top before any new input, so that normally can't have changed since the keypress
-@@ -3496,8 +3497,28 @@ async fn drain_and_process(
+@@ -3496,8 +3497,37 @@ async fn drain_and_process(
          }
      }
  
@@ -127,9 +213,15 @@ index edb4e30..74b0a70 100644
 -    // Skip coalescing while it owns input
 +    // Hold-Space PTT (Claude Code style): a tap must still type a space /
 +    // focus the prompt. If the batch ends on a bare Space press, wait a
-+    // short window for Release (tap) or Repeat (hold). Only when the
-+    // terminal reports releases — otherwise Space is never a voice key.
-+    if crate::app::kitty_releases_reported()
++    // short window for Release (tap) or Repeat (hold).
++    //
++    // Gated on `kitty_all_keys_reported`, NOT `kitty_releases_reported`: the
++    // latter is true whenever `REPORT_EVENT_TYPES` was pushed, but that flag
++    // alone leaves an unmodified Space arriving as plain UTF-8, which reports
++    // no release at all. The wait would then always time out and every tap
++    // would read as a hold — mic opens, space never typed. Without the
++    // all-keys bit Space is simply not a voice key.
++    if crate::app::kitty_all_keys_reported()
 +        && app.voice_mode_enabled
 +        && xai_grok_voice::AUDIO_SUPPORTED
 +        && app.current_ui.voice_keybind_enabled.unwrap_or(true)
@@ -144,22 +236,29 @@ index edb4e30..74b0a70 100644
 +        }
 +    }
 +
++    let space_hold_batch = crate::app::kitty_all_keys_reported()
++        && space_hold_indicated(raw_events.iter().map(|timed| &timed.event));
++
 +    // The /gboom game tracks keys by press → release, so it needs the
 +    // release events that `coalesce_rapid_keys` strips (and it never
 +    // pastes). Skip coalescing while it owns input.
      let coalesced = if app.gboom_active() {
          raw_events
      } else {
-@@ -3509,6 +3530,8 @@ async fn drain_and_process(
+@@ -3509,6 +3539,12 @@ async fn drain_and_process(
          .into_iter()
          .map(normalize_input_event)
          .collect::<Vec<_>>();
-+    let space_hold_this_batch = crate::app::kitty_releases_reported()
-+        && space_hold_indicated(coalesced.iter().map(|routed| &routed.event));
++    // Classified from `raw_events` above (captured before the filters run), not
++    // from `coalesced`: `space_hold_indicated` reads a *missing* Release as the
++    // key still being down, so any filter that dropped one would silently
++    // promote a tap to a hold. `coalesce_rapid_keys` exempts voice-chord
++    // releases today; this does not depend on it continuing to.
++    let space_hold_this_batch = space_hold_batch;
  
      let mut handled: u32 = 0;
  
-@@ -3611,42 +3634,74 @@ async fn drain_and_process(
+@@ -3611,42 +3647,78 @@ async fn drain_and_process(
              }
              _ => {}
          }
@@ -206,8 +305,12 @@ index edb4e30..74b0a70 100644
 +            let keybind_enabled = app.current_ui.voice_keybind_enabled.unwrap_or(true);
 +            let hold_owned = app.voice_hold_owned();
 +            let kitty = crate::app::kitty_releases_reported();
++            // F8 is a functional key: it reports a release under
++            // `REPORT_EVENT_TYPES` alone, so the chord path below keeps
++            // `kitty`. A bare Space only does under all-keys reporting.
++            let kitty_space = crate::app::kitty_all_keys_reported();
 +
-+            if kitty
++            if kitty_space
 +                && is_bare_space_key(ke)
 +                && space_hold_claims_event(
 +                    ke.kind,
@@ -264,7 +367,7 @@ index edb4e30..74b0a70 100644
          }
          let is_resize = matches!(ev, Event::Resize(_, _));
          match app.handle_input_at_with_paste_provenance(
-@@ -3892,17 +3947,95 @@ fn voice_chord_claims_event(kind: KeyEventKind, keybind_enabled: bool, hold_owne
+@@ -3892,17 +3964,103 @@ fn voice_chord_claims_event(kind: KeyEventKind, keybind_enabled: bool, hold_owne
      kind != KeyEventKind::Release && keybind_enabled
  }
  
@@ -302,6 +405,14 @@ index edb4e30..74b0a70 100644
 +
 +/// True when a bare Space press in this batch is a hold (Repeat arrived,
 +/// or the press is still down after the wait window) rather than a tap.
++///
++/// The trailing `pending` is the load-bearing line: after the caller's wait
++/// window has closed, an unresolved press means no Release came, i.e. the key
++/// is still down. That inference is only sound where a bare Space reports a
++/// release at all, so every caller must gate on
++/// [`crate::app::kitty_all_keys_reported`] — under `REPORT_EVENT_TYPES` alone
++/// Space arrives as plain UTF-8, no release ever lands, and this would answer
++/// "hold" for every single tap.
 +fn space_hold_indicated<'a>(events: impl IntoIterator<Item = &'a Event>) -> bool {
 +    let mut pending = false;
 +    for ev in events {
@@ -368,7 +479,7 @@ index edb4e30..74b0a70 100644
      }
  }
  
-@@ -4784,15 +4917,71 @@ mod tests {
+@@ -4784,15 +4942,71 @@ mod tests {
              KeyModifiers::CONTROL,
              KeyModifiers::NONE,
          );
@@ -445,6 +556,31 @@ index edb4e30..74b0a70 100644
      // ── voice_chord_action ───────────────────────────────────────────────
  
      #[test]
+diff --git a/crates/codegen/xai-grok-pager/src/app/mod.rs b/crates/codegen/xai-grok-pager/src/app/mod.rs
+index 8d3c9b4..67f19c7 100644
+--- a/crates/codegen/xai-grok-pager/src/app/mod.rs
++++ b/crates/codegen/xai-grok-pager/src/app/mod.rs
+@@ -62,7 +62,9 @@ mod startup_failure;
+ mod turn_completion;
+ pub(crate) mod workspace_sync;
+ mod xt_filter;
+-pub(crate) use crate::terminal::{kitty_flags_pushed, kitty_releases_reported};
++pub(crate) use crate::terminal::{
++    kitty_all_keys_reported, kitty_flags_pushed, kitty_releases_reported,
++};
+ pub use cli::{
+     AgentArgs, AgentCmd, Command, HeadlessArgs, LeaderArgs, LeaderMgmtArgs, LeaderMgmtCommand,
+     LeaderTargetArgs, OutputFormat, PagerArgs, ServeArgs, WrapArgs,
+@@ -1474,7 +1476,8 @@ fn init_terminal(
+                 kitty.disambiguate = true,
+                 kitty.report_event_types =
+                     flags.contains(event::KeyboardEnhancementFlags::REPORT_EVENT_TYPES),
+-                kitty.report_all_keys = false,
++                kitty.report_all_keys = flags
++                    .contains(event::KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES),
+                 "kitty keyboard protocol pushed"
+             );
+         }
 diff --git a/crates/codegen/xai-grok-pager/src/settings/defs.rs b/crates/codegen/xai-grok-pager/src/settings/defs.rs
 index 65b4d3e..0cc3e97 100644
 --- a/crates/codegen/xai-grok-pager/src/settings/defs.rs
