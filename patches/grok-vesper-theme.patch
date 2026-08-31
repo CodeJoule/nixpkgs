@@ -241,12 +241,12 @@ index 0000000..359bb6c
 +    }
 +}
 diff --git a/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs b/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs
-index 747eab5..c984458 100644
+index 0d57442..cf751ee 100644
 --- a/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs
 +++ b/crates/codegen/xai-grok-pager/src/views/settings_modal/tests.rs
-@@ -7162,6 +7162,7 @@ fn max_thoughts_width_preview_title_styling_distinguishes_from_content() {
-         // Resolved via `Theme::current()` rather than a constructor
-         // because `theme::oscura` is a private module.
+@@ -6546,6 +6546,7 @@ fn max_thoughts_width_preview_title_styling_distinguishes_from_content() {
+         crate::theme::ThemeKind::RosePineMoon => crate::theme::Theme::rosepine_moon(),
+         // Resolved via `Theme::current()` rather than a constructor because `theme::oscura` is a private module
          crate::theme::ThemeKind::OscuraMidnight => crate::theme::Theme::current(),
 +        crate::theme::ThemeKind::Vesper => crate::theme::Theme::vesper(),
          crate::theme::ThemeKind::Auto => crate::theme::Theme::groknight(),

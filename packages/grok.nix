@@ -17,20 +17,20 @@
 
 let
   # Pinned open-source tree (xai-org/grok-build). Bump rev + hash together.
-  rev = "19d42e35c07a9c9244f03f6df0c4c353f970d4f9";
-  version = "1.0.6-transparent+vesper+optspace+${builtins.substring 0 7 rev}";
+  rev = "bc7f02eddd3d84085849dc19ed216f11c23b0571";
+  version = "1.0.12-transparent+vesper+holdspace+${builtins.substring 0 7 rev}";
   src = fetchFromGitHub {
     owner = "xai-org";
     repo = "grok-build";
     inherit rev;
-    hash = "sha256-Ug2mIx522mLbu3dcv72ngLOSKKPAH8259qBqt+sty4Q=";
+    hash = "sha256-SvEuKIgCETls4K1B3qIFuIE7EiCdxK1FTbsIehg0uN8=";
   };
 in
 rustPlatform.buildRustPackage {
   pname = "grok";
   inherit version src;
 
-  # transparent_bg → vesper → voice chord (Opt/Alt+Space instead of Ctrl+Space).
+  # transparent_bg → vesper → voice chord (hold-Space PTT, F8 fallback).
   patches = [ patchTransparentBg patchVesperTheme patchVoiceOptSpace ];
 
   cargoLock = {
@@ -74,7 +74,7 @@ rustPlatform.buildRustPackage {
   '';
 
   meta = {
-    description = "Grok Build (from source) with transparent_bg, Vesper theme, Opt+Space voice";
+    description = "Grok Build (from source) with transparent_bg, Vesper theme, hold-Space voice";
     homepage = "https://github.com/xai-org/grok-build";
     license = lib.licenses.asl20;
     mainProgram = "grok";

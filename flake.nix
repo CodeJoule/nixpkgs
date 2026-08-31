@@ -1,5 +1,5 @@
 {
-  description = "Personal packages — patched forge, grok (transparent_bg + Vesper + Opt+Space voice), amphetamine-enhancer, Hermes patches";
+  description = "Personal packages — patched forge, grok (transparent_bg + Vesper + hold-Space voice), amphetamine-enhancer, Hermes patches";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -48,13 +48,18 @@
         # Prebuilt Darwin-only release; no aarch64-linux/x86_64-darwin artifact
         # is packaged yet, so keep it off those systems rather than letting
         # eval fail in packages/tode.nix.
-        // lib.optionalAttrs (system == "aarch64-darwin") {
-          tode = pkgs.callPackage ./packages/tode.nix { };
-        });
+        # Disabled 2026-08-30 at the user's request (not in use). The package
+        # def in packages/tode.nix is kept, pinned at 0.2.0; re-enable by
+        # uncommenting here and in the nix-darwin packages.nix, then bump to
+        # the current upstream release (v0.3.4 as of this writing).
+        # // lib.optionalAttrs (system == "aarch64-darwin") {
+        #   tode = pkgs.callPackage ./packages/tode.nix { };
+        # }
+        );
 
       overlays.default = final: prev: {
         # forge-supergrok = self.packages.${prev.system}.forge;
-        # Source-built grok with transparent_bg, Vesper, Opt+Space voice.
+        # Source-built grok with transparent_bg, Vesper, hold-Space voice.
         grok = self.packages.${prev.system}.grok;
       };
     };

@@ -1,251 +1,538 @@
 diff --git a/crates/codegen/xai-grok-pager/src/actions/defaults.rs b/crates/codegen/xai-grok-pager/src/actions/defaults.rs
-index 1ecfbae..352f49d 100644
+index 5f4906e..5385d5c 100644
 --- a/crates/codegen/xai-grok-pager/src/actions/defaults.rs
 +++ b/crates/codegen/xai-grok-pager/src/actions/defaults.rs
-@@ -661,7 +661,7 @@ pub(super) fn default_actions(
+@@ -657,8 +657,9 @@ pub(super) fn default_actions(
          ActionDef {
              id: ActionId::EnableVoiceMode,
              label: "voice mode",
 -            description: "Start voice dictation (Ctrl+Space / F8)",
-+            description: "Start voice dictation (Opt+Space / F8)",
-             // No key binding (`KeyCode::Null`): dispatched directly by the voice
-             // chord's hold-to-talk press in the event loop, not via the registry.
+-            // No key binding (`KeyCode::Null`): dispatched directly by the voice chord's hold-to-talk press in the event loop, not via the registry
++            description: "Start voice dictation (hold Space / F8)",
++            // No key binding (`KeyCode::Null`): dispatched directly by the voice
++            // chord's hold-to-talk press in the event loop, not via the registry.
              default_key: key!(Null),
-@@ -675,26 +675,25 @@ pub(super) fn default_actions(
+             alt_keys: vec![],
+             category: Category::Input,
+@@ -669,24 +670,23 @@ pub(super) fn default_actions(
+             long_help: None,
          },
          ActionDef {
-             // Voice capture chord (same surface as `/voice`; Esc/Enter stop).
--            // Bound to BOTH Ctrl+Space and F8 — Ctrl+Space decodes on every
--            // terminal (without the Kitty protocol it collapses to NUL, reported
--            // as `Char(' ')`+CONTROL), and F8 is a fallback for OSes/terminals
--            // that intercept Ctrl+Space (e.g. macOS input-source switching; use
--            // Fn+F8 on a laptop). The event loop maps a press to hold-to-talk or
--            // tap-toggle per `[ui].voice_capture_mode` before normal routing.
-+            // Bound to BOTH Opt/Alt+Space and F8 — Opt+Space is ALT+' ' in
-+            // terminal encoding (avoids Ctrl+Space clashes with tmux/Herdr/
-+            // macOS input-source switching). F8 remains a fallback (use
-+            // Fn+F8 on a laptop). The event loop maps a press to hold-to-talk
-+            // or tap-toggle per `[ui].voice_capture_mode` before normal routing.
+-            // Voice capture chord (the same capture as `/voice`; Esc/Enter stop)
+-            // Bound to both Ctrl+Space and F8
+-            // Ctrl+Space decodes on every terminal (without the Kitty protocol it collapses to NUL, reported as `Char(' ')`+CONTROL)
+-            // F8 is a fallback for OSes/terminals that intercept Ctrl+Space (e.g. macOS input-source switching; use Fn+F8 on a laptop).
+-            // The event loop maps a press to hold-to-talk or tap-toggle per `[ui].voice_capture_mode` before normal routing
++            // F8 is the registry binding (`/voice` is slash-only). Hold-Space
++            // PTT is handled in the event loop, not here — binding Space in
++            // the registry would turn every tap-Space into VoiceToggle.
++            // F8 tap-toggles (or hold-to-talk per `[ui].voice_capture_mode`).
              id: ActionId::VoiceToggle,
              label: "mic",
 -            description: "Voice dictation (Ctrl+Space / F8)",
 -            default_key: key!(' ', CONTROL),
-+            description: "Voice dictation (Opt+Space / F8)",
-+            default_key: key!(' ', ALT),
-             alt_keys: vec![key!(F(8))],
+-            alt_keys: vec![key!(F(8))],
++            description: "Voice dictation (hold Space / F8)",
++            default_key: key!(F(8)),
++            alt_keys: vec![],
              category: Category::Input,
-             // `Always` so the toggle key works on the agent screen AND the
-             // session-less dashboard (resolved via the global fallthrough).
+             // `Always` so the toggle key works on the agent screen and the session-less dashboard (resolved via the global fallthrough)
              context: When::Always,
              hint_priority: Some(11),
 -            hint_key_display: Some("Ctrl+Space / F8"),
-+            hint_key_display: Some("Opt+Space / F8"),
++            hint_key_display: Some("Hold Space / F8"),
              requires_confirmation: false,
              long_help: Some(
--                "Microphone capture for dictation, bound to Ctrl+Space (or F8 — handy where Ctrl+Space is taken, e.g. macOS input-source switching; use Fn+F8 on a laptop).\nBehavior follows the Voice capture setting: toggle (press to start, press again to stop) or hold-to-talk (hold to record, release to stop), where hold needs a Kitty-protocol terminal and falls back to toggle elsewhere. `/voice` toggles everywhere.\nSpeech is transcribed straight into the prompt.",
-+                "Microphone capture for dictation, bound to Opt+Space (Alt+Space; F8 is a fallback — use Fn+F8 on a laptop).\nBehavior follows the Voice capture setting: toggle (press to start, press again to stop) or hold-to-talk (hold to record, release to stop), where hold needs a Kitty-protocol terminal and falls back to toggle elsewhere. `/voice` toggles everywhere.\nSpeech is transcribed straight into the prompt.",
+-                "Microphone capture for dictation, bound to Ctrl+Space (or F8: handy where Ctrl+Space is taken, e.g. macOS input-source switching; use Fn+F8 on a laptop).\nBehavior follows the Voice capture setting: toggle (press to start, press again to stop) or hold-to-talk (hold to record, release to stop), where hold needs a Kitty-protocol terminal and falls back to toggle elsewhere. `/voice` toggles everywhere.\nSpeech is transcribed straight into the prompt.",
++                "Microphone capture for dictation. Hold Space to talk, release to stop (Kitty-protocol terminals such as Ghostty — a tap still types a space). F8 is a fallback on every terminal: tap-toggle, or hold-to-talk when Voice capture is set to Hold. `/voice` toggles everywhere.\nSpeech is transcribed straight into the prompt.",
              ),
          },
          // Prompt history has no key chord (Ctrl+R is deliberately unbound):
 diff --git a/crates/codegen/xai-grok-pager/src/app/actions.rs b/crates/codegen/xai-grok-pager/src/app/actions.rs
-index f0986eb..0917968 100644
+index 069f299..26e41f5 100644
 --- a/crates/codegen/xai-grok-pager/src/app/actions.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/actions.rs
-@@ -175,16 +175,16 @@ pub enum Action {
+@@ -159,14 +159,18 @@ pub enum Action {
          /// Pasted images riding along with the prompt.
          images: Vec<crate::prompt_images::PastedImage>,
      },
--    /// Enable session voice mode and start recording (the Ctrl+Space
-+    /// Enable session voice mode and start recording (the Opt+Space
-     /// hold-to-talk key-press, on terminals that report key releases).
-     /// Start-only — never stops; use [`Self::VoiceStop`] / [`Self::VoiceToggle`]
-     /// / Esc to stop.
+-    /// Enable session voice mode and start recording (the Ctrl+Space hold-to-talk key-press, on terminals that report key releases).
+-    /// Start-only, never stops; use [`Self::VoiceStop`], [`Self::VoiceToggle`], or Esc to stop.
++    /// Enable session voice mode and start recording (hold-Space PTT, or
++    /// the F8 hold-to-talk key-press, on terminals that report key releases).
++    /// Start-only — never stops; use [`Self::VoiceStop`] / [`Self::VoiceToggle`]
++    /// / Esc to stop.
      EnableVoiceMode,
--    /// Toggle capture (`/voice`, Ctrl+Space, Esc while listening, recording-row
--    /// `[stop]`, and Ctrl+Space on terminals without key releases). Stops if
-+    /// Toggle capture (`/voice`, Opt+Space, Esc while listening, recording-row
-+    /// `[stop]`, and Opt+Space on terminals without key releases). Stops if
-     /// recording, otherwise starts.
+-    /// Toggle capture (`/voice`, Ctrl+Space, Esc while listening, recording-row `[stop]`, and Ctrl+Space on terminals without key releases).
+-    /// Stops if recording, otherwise starts.
++    /// Toggle capture (`/voice`, F8, Esc while listening, recording-row
++    /// `[stop]`, and F8 on terminals without key releases). Stops if
++    /// recording, otherwise starts.
      VoiceToggle,
--    /// Stop capture unconditionally (Ctrl+Space hold-to-talk key release). Clears
-+    /// Stop capture unconditionally (Opt+Space hold-to-talk key release). Clears
-     /// any pending cold-start so a release during pipeline spawn can't leave a
-     /// hot mic.
+-    /// Stop capture unconditionally (Ctrl+Space hold-to-talk key release).
+-    /// Clears any pending cold-start so a release during pipeline spawn can't leave a hot mic.
++    /// Stop capture unconditionally (hold-Space / F8 hold-to-talk key release).
++    /// Clears any pending cold-start so a release during pipeline spawn
++    /// can't leave a hot mic.
      VoiceStop,
-@@ -518,12 +518,12 @@ pub enum Action {
+     /// Send a direct bash command (bypasses agent loop).
+     SendBashCommand(String),
+@@ -480,11 +484,12 @@ pub enum Action {
      SetHunkTrackerMode(String),
      /// Set default screen mode (`fullscreen` | `minimal`); restart-required.
      SetScreenMode(String),
--    /// Enable/disable the Ctrl+Space / F8 voice-dictation shortcut. SHELL-owned;
-+    /// Enable/disable the Opt+Space / F8 voice-dictation shortcut. SHELL-owned;
-     /// persisted to `[ui].voice_keybind_enabled`. Takes effect on the next
-     /// keypress; `/voice` is unaffected.
+-    /// Enable/disable the Ctrl+Space / F8 voice-dictation shortcut. SHELL-owned; persisted to `[ui].voice_keybind_enabled`.
+-    /// Takes effect on the next keypress; `/voice` is unaffected.
++    /// Enable/disable the hold-Space / F8 voice-dictation shortcut. SHELL-owned;
++    /// persisted to `[ui].voice_keybind_enabled`. Takes effect on the next
++    /// keypress; `/voice` is unaffected.
      SetVoiceKeybindEnabled(bool),
-     /// Set the voice capture mode (`toggle` | `hold`). SHELL-owned; persisted to
--    /// `[ui].voice_capture_mode`. Takes effect for the next Ctrl+Space press.
-+    /// `[ui].voice_capture_mode`. Takes effect for the next Opt+Space press.
+-    /// Set the voice capture mode (`toggle` | `hold`). SHELL-owned; persisted to `[ui].voice_capture_mode`.
+-    /// Takes effect for the next Ctrl+Space press.
++    /// Set the voice capture mode (`toggle` | `hold`). SHELL-owned; persisted to
++    /// `[ui].voice_capture_mode`. Takes effect for the next F8 press.
      SetVoiceCaptureMode(String),
-     /// Set the voice STT language (catalog code or `auto`). SHELL-owned; persisted
-     /// to `[ui].voice_stt_language`. Takes effect for the next voice capture.
+     /// Set the voice STT language (catalog code or `auto`). SHELL-owned; persisted to `[ui].voice_stt_language`.
+     /// Takes effect for the next voice capture.
 diff --git a/crates/codegen/xai-grok-pager/src/app/event_loop.rs b/crates/codegen/xai-grok-pager/src/app/event_loop.rs
-index 6e68d2c..e1534e3 100644
+index edb4e30..74b0a70 100644
 --- a/crates/codegen/xai-grok-pager/src/app/event_loop.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/event_loop.rs
-@@ -1923,7 +1923,7 @@ pub(crate) async fn run(
-             return Err(e);
+@@ -2184,8 +2184,9 @@ pub(crate) async fn run(
+             break;
          }
  
--        // Lazy voice pipeline: only after `/voice` or Ctrl+Space while gates
-+        // Lazy voice pipeline: only after `/voice` or Opt+Space while gates
-         // allow. Consume the queued cold-start, carrying its hold-ownership and
-         // bound target forward into the live recording it spawns.
+-        // Lazy voice pipeline: only after `/voice` or Ctrl+Space while gates allow
+-        // Consume the queued cold-start, carrying its hold-ownership and bound target forward into the live recording it spawns
++        // Lazy voice pipeline: only after `/voice`, hold-Space, or F8 while gates
++        // allow. Consume the queued cold-start, carrying its hold-ownership and
++        // bound target forward into the live recording it spawns.
          if let VoiceState::ColdStart { hold, target } = app.voice_state {
-@@ -1941,7 +1941,7 @@ pub(crate) async fn run(
+             if app.voice_cmd_tx.is_none() && app.voice_can_start_pipeline() {
+                 let voice_auth = crate::voice::build_voice_auth(voice_auth_factory.clone());
+@@ -2201,7 +2202,7 @@ pub(crate) async fn run(
                  app.voice_auth = Some(voice_auth);
                  app.voice_cmd_tx = Some(cmd_tx);
                  voice_rx = Some(event_rx);
 -                tracing::info!("voice pipeline started (/voice or Ctrl+Space)");
-+                tracing::info!("voice pipeline started (/voice or Opt+Space)");
++                tracing::info!("voice pipeline started (/voice, hold-Space, or F8)");
                  // The spawn is async, so begin capture now the pipeline is live
-                 // — but only if the user is still on a surface that can receive
-                 // dictation (an agent prompt or the dashboard dispatch input).
-@@ -3311,11 +3311,11 @@ async fn drain_and_process(
+                 // But only if the user is still somewhere that can receive dictation (an agent prompt or the dashboard dispatch input)
+                 // This runs at loop-top before any new input, so that normally can't have changed since the keypress
+@@ -3496,8 +3497,28 @@ async fn drain_and_process(
+         }
+     }
+ 
+-    // The /gboom game tracks keys by press/release, so it needs the release events that `coalesce_rapid_keys` strips (and it never pastes)
+-    // Skip coalescing while it owns input
++    // Hold-Space PTT (Claude Code style): a tap must still type a space /
++    // focus the prompt. If the batch ends on a bare Space press, wait a
++    // short window for Release (tap) or Repeat (hold). Only when the
++    // terminal reports releases — otherwise Space is never a voice key.
++    if crate::app::kitty_releases_reported()
++        && app.voice_mode_enabled
++        && xai_grok_voice::AUDIO_SUPPORTED
++        && app.current_ui.voice_keybind_enabled.unwrap_or(true)
++        && space_press_unresolved(&raw_events)
++    {
++        match tokio::time::timeout(SPACE_HOLD_THRESHOLD, input_rx.recv()).await {
++            Ok(Some(ev)) => {
++                raw_events.push(ev);
++                drain_immediate(&mut raw_events, input_rx);
++            }
++            _ => {}
++        }
++    }
++
++    // The /gboom game tracks keys by press → release, so it needs the
++    // release events that `coalesce_rapid_keys` strips (and it never
++    // pastes). Skip coalescing while it owns input.
+     let coalesced = if app.gboom_active() {
+         raw_events
+     } else {
+@@ -3509,6 +3530,8 @@ async fn drain_and_process(
+         .into_iter()
+         .map(normalize_input_event)
+         .collect::<Vec<_>>();
++    let space_hold_this_batch = crate::app::kitty_releases_reported()
++        && space_hold_indicated(coalesced.iter().map(|routed| &routed.event));
+ 
+     let mut handled: u32 = 0;
+ 
+@@ -3611,42 +3634,74 @@ async fn drain_and_process(
              }
              _ => {}
          }
--        // Voice capture chord (Ctrl+Space or F8), handled here before normal
-+        // Voice capture chord (Opt+Space or F8), handled here before normal
-         // routing so the release reaches us and the key never lands as text.
-         // Hold-to-talk where releases are reported (press records, release
-         // stops), else tap toggle. A release is only ours when a hold session
--        // owns it, so a bare Space release (Ctrl lifted first) stops
-+        // owns it, so a bare Space release (Opt/Alt lifted first) stops
-         // hold-to-talk without eating every Space release during normal typing.
-         // `[ui].voice_keybind_enabled` (read live, like `voice_capture_mode`)
-         // silences chord presses without touching `/voice` — see
-@@ -3594,16 +3594,16 @@ fn voice_chord_claims_event(kind: KeyEventKind, keybind_enabled: bool, hold_owne
+-        // Voice capture chord (Ctrl+Space or F8), handled here before normal routing so the release reaches us and the key never lands as text
+-        // Hold-to-talk where releases are reported (press records, release stops), else tap toggle
+-        // A release is only ours when a hold session owns it
+-        // A bare Space release (Ctrl lifted first) thus stops hold-to-talk without eating every Space release during normal typing
+-        // `[ui].voice_keybind_enabled` (read live, like `voice_capture_mode`) silences chord presses without touching `/voice`
+-        // See `voice_chord_claims_event` for the exact press/release/hold gating
++        // Voice capture: hold-Space (Claude-style PTT) and F8. Intercepted
++        // here before normal routing so a hold's release reaches us and
++        // never lands as text. A *tap* Space is not claimed — it types a
++        // space / focuses the prompt as usual.
++        //
++        // Hold-Space needs Kitty-protocol releases. F8 still tap-toggles
++        // (or hold-to-talk when `[ui].voice_capture_mode = hold`) on every
++        // terminal. `[ui].voice_keybind_enabled` silences both without
++        // touching `/voice`.
+         if let Event::Key(ke) = ev
+             && app.voice_mode_enabled
+             && xai_grok_voice::AUDIO_SUPPORTED
+-            && is_voice_chord(ke)
+-            && voice_chord_claims_event(
+-                ke.kind,
+-                app.current_ui.voice_keybind_enabled.unwrap_or(true),
+-                app.voice_hold_owned(),
+-            )
+         {
+-            // Hold-to-talk only when selected AND the terminal reports key releases (Kitty protocol); otherwise fall back to a tap toggle
+-            let hold_mode = crate::settings::canonical_voice_capture_mode(
+-                app.current_ui.voice_capture_mode.as_deref(),
+-            ) == "hold";
+-            let action = voice_chord_action(
+-                hold_mode,
+-                crate::app::kitty_releases_reported(),
+-                ke.kind,
+-                app.voice_listening(),
+-                app.voice_hold_owned(),
+-            );
+-            if let Some(action) = action {
+-                let effs = dispatch::dispatch(action, app);
+-                if process_effects(effs, tasks, app, progress_tx) {
+-                    return true;
++            let keybind_enabled = app.current_ui.voice_keybind_enabled.unwrap_or(true);
++            let hold_owned = app.voice_hold_owned();
++            let kitty = crate::app::kitty_releases_reported();
++
++            if kitty
++                && is_bare_space_key(ke)
++                && space_hold_claims_event(
++                    ke.kind,
++                    space_hold_this_batch,
++                    keybind_enabled,
++                    hold_owned,
++                )
++            {
++                let action = space_hold_action(
++                    ke.kind,
++                    space_hold_this_batch,
++                    app.voice_listening(),
++                    hold_owned,
++                );
++                if let Some(action) = action {
++                    let effs = dispatch::dispatch(action, app);
++                    if process_effects(effs, tasks, app, progress_tx) {
++                        return true;
++                    }
++                    needs_draw = true;
++                    had_non_resize_change = true;
+                 }
+-                needs_draw = true;
+-                had_non_resize_change = true;
++                return false;
++            }
++
++            if is_voice_chord(ke) && voice_chord_claims_event(ke.kind, keybind_enabled, hold_owned)
++            {
++                // F8 (and a hold-owned Space release on the F8 path):
++                // hold-to-talk only when selected AND the terminal reports
++                // key releases; otherwise tap toggle.
++                let hold_mode = crate::settings::canonical_voice_capture_mode(
++                    app.current_ui.voice_capture_mode.as_deref(),
++                ) == "hold";
++                let action = voice_chord_action(
++                    hold_mode,
++                    kitty,
++                    ke.kind,
++                    app.voice_listening(),
++                    hold_owned,
++                );
++                if let Some(action) = action {
++                    let effs = dispatch::dispatch(action, app);
++                    if process_effects(effs, tasks, app, progress_tx) {
++                        return true;
++                    }
++                    needs_draw = true;
++                    had_non_resize_change = true;
++                }
++                return false;
+             }
+-            return false;
+         }
+         let is_resize = matches!(ev, Event::Resize(_, _));
+         match app.handle_input_at_with_paste_provenance(
+@@ -3892,17 +3947,95 @@ fn voice_chord_claims_event(kind: KeyEventKind, keybind_enabled: bool, hold_owne
      kind != KeyEventKind::Release && keybind_enabled
  }
  
--/// The voice-capture chord: **Ctrl+Space** or **F8**. A press needs the exact
-+/// The voice-capture chord: **Opt/Alt+Space** or **F8**. A press needs the exact
- /// chord (matching the registry, so Shift+F8 / Ctrl+Alt+Space don't fire); a
--/// release matches the key alone (Space/F8), since on Kitty the Ctrl release can
--/// precede Space and drop the CONTROL bit. Callers gate release handling on an
-+/// release matches the key alone (Space/F8), since on Kitty the Alt/Opt release can
-+/// precede Space and drop the ALT bit. Callers gate release handling on an
- /// owning hold session, so a stray bare release is a no-op.
+-/// The voice-capture chord: **Ctrl+Space** or **F8**.
+-/// A press needs the exact chord (matching the registry, so Shift+F8 / Ctrl+Alt+Space don't fire).
+-/// A release matches the key alone (Space/F8), since on Kitty the Ctrl release can precede Space and drop the CONTROL bit.
+-/// Callers gate release handling on an owning hold session, so a stray bare release is a no-op.
++/// How long a bare Space must be held before it becomes push-to-talk.
++/// A quicker tap still types a space / focuses the prompt.
++const SPACE_HOLD_THRESHOLD: Duration = Duration::from_millis(200);
++
++fn is_bare_space_key(ke: &KeyEvent) -> bool {
++    ke.code == KeyCode::Char(' ') && ke.modifiers.is_empty()
++}
++
++/// True when the batch ends on a bare Space press that has not yet seen
++/// a matching Release, Repeat, or follow-up key — we should wait.
++fn space_press_unresolved(events: &[TimedInputEvent]) -> bool {
++    let mut pending = false;
++    for ev in events {
++        match &ev.event {
++            Event::Key(ke) if is_bare_space_key(ke) => match ke.kind {
++                KeyEventKind::Press => pending = true,
++                KeyEventKind::Release | KeyEventKind::Repeat => pending = false,
++                _ => {}
++            },
++            // Space then another key is a tap ("hello world"), not a hold.
++            Event::Key(ke) if ke.kind == KeyEventKind::Press => pending = false,
++            Event::Paste(_) => pending = false,
++            _ => {}
++        }
++    }
++    pending
++}
++
++/// True when a bare Space press in this batch is a hold (Repeat arrived,
++/// or the press is still down after the wait window) rather than a tap.
++fn space_hold_indicated<'a>(events: impl IntoIterator<Item = &'a Event>) -> bool {
++    let mut pending = false;
++    for ev in events {
++        match ev {
++            Event::Key(ke) if is_bare_space_key(ke) => match ke.kind {
++                KeyEventKind::Press => pending = true,
++                KeyEventKind::Repeat if pending => return true,
++                KeyEventKind::Release => pending = false,
++                _ => {}
++            },
++            Event::Key(ke) if ke.kind == KeyEventKind::Press => pending = false,
++            Event::Paste(_) => pending = false,
++            _ => {}
++        }
++    }
++    pending
++}
++
++/// Hold-Space PTT mapping. A tap (`hold_this_batch == false`) never starts
++/// voice — that press falls through and types a space.
++fn space_hold_action(
++    kind: KeyEventKind,
++    hold_this_batch: bool,
++    listening: bool,
++    hold_owned: bool,
++) -> Option<crate::app::actions::Action> {
++    use crate::app::actions::Action;
++    match kind {
++        KeyEventKind::Press if hold_this_batch && !listening => Some(Action::EnableVoiceMode),
++        KeyEventKind::Press if hold_this_batch && listening && !hold_owned => {
++            Some(Action::VoiceToggle)
++        }
++        KeyEventKind::Release if hold_owned => Some(Action::VoiceStop),
++        _ => None,
++    }
++}
++
++/// Whether the hold-Space intercept claims this event.
++///
++/// A tap Space press is never claimed (it must type). An active hold
++/// owns its events end-to-end so a setting flip cannot wedge the mic.
++fn space_hold_claims_event(
++    kind: KeyEventKind,
++    hold_this_batch: bool,
++    keybind_enabled: bool,
++    hold_owned: bool,
++) -> bool {
++    if hold_owned {
++        return true;
++    }
++    keybind_enabled && hold_this_batch && kind != KeyEventKind::Release
++}
++
++/// F8 (and a hold-owned Space/F8 release). Press is exact-chord only so
++/// Shift+F8 does not fire. Release matches the key alone.
  fn is_voice_chord(ke: &KeyEvent) -> bool {
      match ke.kind {
          KeyEventKind::Release => matches!(ke.code, KeyCode::Char(' ') | KeyCode::F(8)),
-         _ => {
+-        _ => {
 -            (ke.code == KeyCode::Char(' ') && ke.modifiers == KeyModifiers::CONTROL)
-+            (ke.code == KeyCode::Char(' ') && ke.modifiers == KeyModifiers::ALT)
-                 || (ke.code == KeyCode::F(8) && ke.modifiers.is_empty())
-         }
+-                || (ke.code == KeyCode::F(8) && ke.modifiers.is_empty())
+-        }
++        _ => ke.code == KeyCode::F(8) && ke.modifiers.is_empty(),
      }
-@@ -4141,17 +4141,17 @@ mod tests {
-                 state: KeyEventState::NONE,
-             })
-         };
--        let (sp, f8, ctrl, none) = (
-+        let (sp, f8, alt, none) = (
-             KeyCode::Char(' '),
-             KeyCode::F(8),
--            KeyModifiers::CONTROL,
-+            KeyModifiers::ALT,
+ }
+ 
+@@ -4784,15 +4917,71 @@ mod tests {
+             KeyModifiers::CONTROL,
              KeyModifiers::NONE,
          );
-         // Press: exact chord only — stray mods / bare Space don't fire (Thread 4).
+-        // Press: exact chord only; stray mods / bare Space don't fire
 -        assert!(hit(sp, ctrl, Press) && hit(f8, none, Press));
 -        assert!(!hit(sp, ctrl | KeyModifiers::ALT, Press));
-+        assert!(hit(sp, alt, Press) && hit(f8, none, Press));
-+        assert!(!hit(sp, alt | KeyModifiers::CONTROL, Press));
-         assert!(!hit(f8, KeyModifiers::SHIFT, Press) && !hit(sp, none, Press));
--        // Release: key alone — a bare Space release (Ctrl lifted first) matches so
-+        // Release: key alone — a bare Space release (Opt/Alt lifted first) matches so
-         // hold-to-talk can still stop (Thread 3); non-chord keys don't.
+-        assert!(!hit(f8, KeyModifiers::SHIFT, Press) && !hit(sp, none, Press));
+-        // Release: key alone; a bare Space release (Ctrl lifted first) matches so hold-to-talk can still stop. Non-chord keys don't.
++        // Press: F8 only. Bare Space is hold-PTT (separate path); Ctrl+Space
++        // is no longer the chord.
++        assert!(hit(f8, none, Press));
++        assert!(!hit(sp, none, Press) && !hit(sp, ctrl, Press));
++        assert!(!hit(f8, KeyModifiers::SHIFT, Press));
++        // Release: key alone — a bare Space release still matches so a
++        // hold-owned F8 session can stop if the modifier drops first.
          assert!(hit(sp, none, Release) && hit(f8, none, Release));
          assert!(!hit(KeyCode::Char('a'), none, Release));
+     }
+ 
++    fn ke(kind: KeyEventKind) -> Event {
++        Event::Key(KeyEvent {
++            code: KeyCode::Char(' '),
++            modifiers: KeyModifiers::NONE,
++            kind,
++            state: KeyEventState::NONE,
++        })
++    }
++
++    fn timed(kind: KeyEventKind) -> TimedInputEvent {
++        TimedInputEvent::now(ke(kind))
++    }
++
++    #[test]
++    fn space_press_unresolved_and_hold_indicated() {
++        use KeyEventKind::{Press, Release, Repeat};
++        assert!(space_press_unresolved(&[timed(Press)]));
++        assert!(!space_press_unresolved(&[timed(Press), timed(Release)]));
++        assert!(!space_press_unresolved(&[timed(Press), timed(Repeat)]));
++        assert!(space_hold_indicated([&ke(Press), &ke(Repeat)]));
++        assert!(space_hold_indicated([&ke(Press)]));
++        assert!(!space_hold_indicated([&ke(Press), &ke(Release)]));
++        let letter = Event::Key(KeyEvent {
++            code: KeyCode::Char('w'),
++            modifiers: KeyModifiers::NONE,
++            kind: Press,
++            state: KeyEventState::NONE,
++        });
++        assert!(!space_hold_indicated([&ke(Press), &letter]));
++        assert!(!space_press_unresolved(&[
++            timed(Press),
++            TimedInputEvent::now(letter)
++        ]));
++    }
++
++    #[test]
++    fn space_hold_action_and_claims() {
++        use crate::app::actions::Action;
++        use KeyEventKind::{Press, Release, Repeat};
++        assert!(matches!(
++            space_hold_action(Press, true, false, false),
++            Some(Action::EnableVoiceMode)
++        ));
++        assert!(space_hold_action(Press, false, false, false).is_none());
++        assert!(matches!(
++            space_hold_action(Release, true, true, true),
++            Some(Action::VoiceStop)
++        ));
++        assert!(space_hold_action(Repeat, true, true, true).is_none());
++        assert!(!space_hold_claims_event(Press, false, true, false));
++        assert!(space_hold_claims_event(Press, true, true, false));
++        assert!(space_hold_claims_event(Release, false, false, true));
++    }
++
+     // ── voice_chord_action ───────────────────────────────────────────────
+ 
+     #[test]
 diff --git a/crates/codegen/xai-grok-pager/src/settings/defs.rs b/crates/codegen/xai-grok-pager/src/settings/defs.rs
-index f64bf83..0540362 100644
+index 65b4d3e..0cc3e97 100644
 --- a/crates/codegen/xai-grok-pager/src/settings/defs.rs
 +++ b/crates/codegen/xai-grok-pager/src/settings/defs.rs
-@@ -324,12 +324,12 @@ const VOICE_CAPTURE_MODE_CHOICES: &[EnumChoice] = &[
+@@ -319,12 +319,12 @@ const VOICE_CAPTURE_MODE_CHOICES: &[EnumChoice] = &[
      EnumChoice {
          canonical: "toggle",
          display: "Toggle",
 -        description: "Ctrl+Space / F8 starts dictation; press again (or Esc/Enter) to stop.",
-+        description: "Opt+Space / F8 starts dictation; press again (or Esc/Enter) to stop.",
++        description: "F8 / /voice starts dictation; press again (or Esc/Enter) to stop. Hold Space is always push-to-talk.",
      },
      EnumChoice {
          canonical: "hold",
          display: "Hold to talk",
 -        description: "Hold Ctrl+Space / F8 to record, release to stop. Needs a Kitty-protocol terminal.",
-+        description: "Hold Opt+Space / F8 to record, release to stop. Needs a Kitty-protocol terminal.",
++        description: "Hold Space or F8 to record, release to stop. Space needs a Kitty-protocol terminal.",
      },
  ];
  
-@@ -1393,14 +1393,14 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1398,14 +1398,15 @@ pub fn default_settings() -> Vec<SettingMeta> {
+             restart_required: true,
              hidden_in_minimal: false,
          },
-         // SHELL-owned, persisted to `[ui].voice_keybind_enabled`. Default ON —
--        // `None` (inherit) reads as `true`. Disables only the Ctrl+Space / F8
-+        // `None` (inherit) reads as `true`. Disables only the Opt+Space / F8
-         // chord; `/voice` (and Esc / the recording-row `[stop]`) keep working.
+-        // SHELL-owned, persisted to `[ui].voice_keybind_enabled`. Default ON: `None` (inherit) reads as `true`.
+-        // Off disables only the Ctrl+Space / F8 chord; `/voice` (and Esc / the recording-row `[stop]`) keep working
++        // SHELL-owned, persisted to `[ui].voice_keybind_enabled`. Default ON —
++        // `None` (inherit) reads as `true`. Disables only hold-Space / F8;
++        // `/voice` (and Esc / the recording-row `[stop]`) keep working.
          SettingMeta {
              key: "voice_keybind_enabled",
              category: SettingCategory::Editor,
              owner: SettingOwner::Shell,
              label: "Voice shortcut",
 -            description: "Enable the Ctrl+Space / F8 shortcut for voice dictation. \
-+            description: "Enable the Opt+Space / F8 shortcut for voice dictation. \
++            description: "Enable hold-Space / F8 for voice dictation. \
                            When off, the keys are ignored; /voice still starts \
                            dictation.",
              keywords: &[
-@@ -1412,7 +1412,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1417,7 +1418,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
                  "stt",
                  "keybinding",
                  "hotkey",
 -                "ctrl+space",
-+                "opt+space",
-+                "alt+space",
++                "hold space",
++                "space",
                  "f8",
                  "disable",
              ],
-@@ -1430,7 +1431,7 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1435,9 +1437,9 @@ pub fn default_settings() -> Vec<SettingMeta> {
              category: SettingCategory::Editor,
              owner: SettingOwner::Shell,
              label: "Voice capture",
 -            description: "How the voice chord (Ctrl+Space / F8) behaves: Toggle \
-+            description: "How the voice chord (Opt+Space / F8) behaves: Toggle \
-                           (press to start/stop) or Hold to talk (hold to record, \
-                           release to stop; needs a Kitty-protocol terminal).",
+-                          (press to start/stop) or Hold to talk (hold to record, \
+-                          release to stop; needs a Kitty-protocol terminal).",
++            description: "How F8 behaves: Toggle (press to start/stop) or Hold \
++                          to talk (hold to record, release to stop; needs a \
++                          Kitty-protocol terminal). Hold Space is always push-to-talk.",
              keywords: &[
-@@ -1443,7 +1444,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
+                 "voice",
+                 "dictation",
+@@ -1448,7 +1450,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
                  "stt",
                  "toggle",
                  "hold",
 -                "ctrl+space",
-+                "opt+space",
-+                "alt+space",
++                "hold space",
++                "space",
                  "f8",
                  "push-to-talk",
              ],
 diff --git a/crates/codegen/xai-grok-pager/src/views/shortcuts_help.rs b/crates/codegen/xai-grok-pager/src/views/shortcuts_help.rs
-index 4ace5ea..4ac4a39 100644
+index ab22b54..1653d25 100644
 --- a/crates/codegen/xai-grok-pager/src/views/shortcuts_help.rs
 +++ b/crates/codegen/xai-grok-pager/src/views/shortcuts_help.rs
-@@ -194,10 +194,10 @@ pub fn build_entries(
+@@ -182,10 +182,11 @@ pub fn build_entries(
              if def.default_key == crate::key!(Null) && def.alt_keys.is_empty() {
                  continue;
              }
--            // The voice chord (`Ctrl+Space`) is hidden when the voice gate is
-+            // The voice chord (`Opt+Space`) is hidden when the voice gate is
-             // off (remote kill switch / `GROK_VOICE_MODE=0`) or the user turned
-             // the Voice shortcut setting off — don't advertise keys that do
--            // nothing. `Ctrl+Space` decodes the same with or without the Kitty
-+            // nothing. `Opt+Space` (ALT+' ') decodes the same with or without the Kitty
-             // keyboard protocol (it just toggles instead of hold-to-talk), so
-             // it's shown on every terminal once the gates are on.
+-            // The voice chord (`Ctrl+Space`) is hidden when the voice gate is off or the user turned the Voice shortcut setting off
+-            // The gate goes off via the remote kill switch or `GROK_VOICE_MODE=0`; don't advertise keys that do nothing
+-            // `Ctrl+Space` decodes the same with or without the Kitty keyboard protocol (it just toggles instead of hold-to-talk)
+-            // It is therefore shown on every terminal once the gates are on
++            // The voice chord (`Hold Space / F8`) is hidden when the voice
++            // gate is off (remote kill switch / `GROK_VOICE_MODE=0`) or the
++            // user turned the Voice shortcut setting off — don't advertise
++            // keys that do nothing. Hold-Space needs Kitty-protocol
++            // releases; F8 still tap-toggles without them.
              // EnableVoiceMode is slash-only and already dropped above.
+             if def.id == crate::actions::ActionId::VoiceToggle
+                 && (!crate::app::voice_mode_enabled() || !crate::app::voice_keybind_enabled())
