@@ -18,7 +18,7 @@
 let
   # Pinned open-source tree (xai-org/grok-build). Bump rev + hash together.
   rev = "bc7f02eddd3d84085849dc19ed216f11c23b0571";
-  version = "1.0.12-transparent+vesper+holdspace+${builtins.substring 0 7 rev}";
+  version = "1.0.12-transparent+vesper+holdspace-tap+${builtins.substring 0 7 rev}";
   src = fetchFromGitHub {
     owner = "xai-org";
     repo = "grok-build";
@@ -74,7 +74,7 @@ rustPlatform.buildRustPackage {
   '';
 
   meta = {
-    description = "Grok Build (from source) with transparent_bg, Vesper theme, hold-Space voice";
+    description = "Grok Build (from source) with transparent_bg, Vesper theme, hold-Space voice (tap types a space; herdr uses F8)";
     homepage = "https://github.com/xai-org/grok-build";
     license = lib.licenses.asl20;
     mainProgram = "grok";

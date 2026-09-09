@@ -85,7 +85,7 @@ index d9fac41..067ff2d 100644
  };
  pub use term_version::{TermVersion, TermVersionSource};
 diff --git a/crates/codegen/xai-grok-pager/src/actions/defaults.rs b/crates/codegen/xai-grok-pager/src/actions/defaults.rs
-index 5f4906e..5385d5c 100644
+index 5f4906e..34b8ed0 100644
 --- a/crates/codegen/xai-grok-pager/src/actions/defaults.rs
 +++ b/crates/codegen/xai-grok-pager/src/actions/defaults.rs
 @@ -657,8 +657,9 @@ pub(super) fn default_actions(
@@ -130,12 +130,12 @@ index 5f4906e..5385d5c 100644
              requires_confirmation: false,
              long_help: Some(
 -                "Microphone capture for dictation, bound to Ctrl+Space (or F8: handy where Ctrl+Space is taken, e.g. macOS input-source switching; use Fn+F8 on a laptop).\nBehavior follows the Voice capture setting: toggle (press to start, press again to stop) or hold-to-talk (hold to record, release to stop), where hold needs a Kitty-protocol terminal and falls back to toggle elsewhere. `/voice` toggles everywhere.\nSpeech is transcribed straight into the prompt.",
-+                "Microphone capture for dictation. Hold Space to talk, release to stop (Kitty-protocol terminals such as Ghostty — a tap still types a space). F8 is a fallback on every terminal: tap-toggle, or hold-to-talk when Voice capture is set to Hold. `/voice` toggles everywhere.\nSpeech is transcribed straight into the prompt.",
++                "Microphone capture for dictation. Hold Space to talk, release to stop on Kitty-protocol terminals that report printable-key releases (Ghostty directly — a tap still types a space). Inside herdr, Space types a space; use F8 (tap-toggle, or hold-to-talk when Voice capture is set to Hold). `/voice` toggles everywhere.\nSpeech is transcribed straight into the prompt.",
              ),
          },
          // Prompt history has no key chord (Ctrl+R is deliberately unbound):
 diff --git a/crates/codegen/xai-grok-pager/src/app/actions.rs b/crates/codegen/xai-grok-pager/src/app/actions.rs
-index 069f299..26e41f5 100644
+index 0c79cd5..26e41f5 100644
 --- a/crates/codegen/xai-grok-pager/src/app/actions.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/actions.rs
 @@ -159,14 +159,18 @@ pub enum Action {
@@ -180,11 +180,30 @@ index 069f299..26e41f5 100644
      SetVoiceCaptureMode(String),
      /// Set the voice STT language (catalog code or `auto`). SHELL-owned; persisted to `[ui].voice_stt_language`.
      /// Takes effect for the next voice capture.
+@@ -495,6 +500,10 @@ pub enum Action {
+     ToggleCompactMode,
+     /// Set compact mode (reduce user message padding).
+     SetCompactMode(bool),
++    /// Toggle transparent theme backgrounds (defer canvas to terminal opacity).
++    ToggleTransparentBg,
++    /// Set transparent theme backgrounds (defer canvas to terminal opacity).
++    SetTransparentBg(bool),
+     /// Set timestamp display on messages.
+     SetTimestamps(bool),
+     /// Set timeline sidebar visibility (per-turn tick rail).
 diff --git a/crates/codegen/xai-grok-pager/src/app/event_loop.rs b/crates/codegen/xai-grok-pager/src/app/event_loop.rs
-index edb4e30..effbdca 100644
+index edb4e30..ff26782 100644
 --- a/crates/codegen/xai-grok-pager/src/app/event_loop.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/event_loop.rs
-@@ -2184,8 +2184,9 @@ pub(crate) async fn run(
+@@ -3,6 +3,7 @@
+ //! A thin `tokio::select!` loop. All input routing, rendering, and state management is delegated to [`AppView`].
+ //! The event loop only handles IO: terminal events, the ACP channel, spawned task results, animation ticks, and hot-reloadable config changes.
+ 
++use std::sync::atomic::{AtomicBool, Ordering};
+ use std::time::Duration;
+ 
+ use anyhow::Context as _;
+@@ -2184,8 +2185,9 @@ pub(crate) async fn run(
              break;
          }
  
@@ -196,7 +215,7 @@ index edb4e30..effbdca 100644
          if let VoiceState::ColdStart { hold, target } = app.voice_state {
              if app.voice_cmd_tx.is_none() && app.voice_can_start_pipeline() {
                  let voice_auth = crate::voice::build_voice_auth(voice_auth_factory.clone());
-@@ -2201,7 +2202,7 @@ pub(crate) async fn run(
+@@ -2201,7 +2203,7 @@ pub(crate) async fn run(
                  app.voice_auth = Some(voice_auth);
                  app.voice_cmd_tx = Some(cmd_tx);
                  voice_rx = Some(event_rx);
@@ -205,7 +224,7 @@ index edb4e30..effbdca 100644
                  // The spawn is async, so begin capture now the pipeline is live
                  // But only if the user is still somewhere that can receive dictation (an agent prompt or the dashboard dispatch input)
                  // This runs at loop-top before any new input, so that normally can't have changed since the keypress
-@@ -3496,8 +3497,37 @@ async fn drain_and_process(
+@@ -3496,8 +3498,51 @@ async fn drain_and_process(
          }
      }
  
@@ -215,28 +234,42 @@ index edb4e30..effbdca 100644
 +    // focus the prompt. If the batch ends on a bare Space press, wait a
 +    // short window for Release (tap) or Repeat (hold).
 +    //
-+    // Gated on `kitty_all_keys_reported`, NOT `kitty_releases_reported`: the
-+    // latter is true whenever `REPORT_EVENT_TYPES` was pushed, but that flag
-+    // alone leaves an unmodified Space arriving as plain UTF-8, which reports
-+    // no release at all. The wait would then always time out and every tap
-+    // would read as a hold — mic opens, space never typed. Without the
-+    // all-keys bit Space is simply not a voice key.
-+    if crate::app::kitty_all_keys_reported()
++    // Gated on `space_hold_protocol_live`, not a raw `kitty_all_keys_reported`
++    // check: pushing `REPORT_ALL_KEYS_AS_ESCAPE_CODES` only records what we
++    // *asked* for. herdr (and some other VTs) still deliver a bare Space as
++    // UTF-8 with no release, so a missing-release timeout must never start
++    // the mic. F8 remains the fallback chord there.
++    if space_hold_protocol_live()
 +        && app.voice_mode_enabled
 +        && xai_grok_voice::AUDIO_SUPPORTED
 +        && app.current_ui.voice_keybind_enabled.unwrap_or(true)
 +        && space_press_unresolved(&raw_events)
 +    {
-+        match tokio::time::timeout(SPACE_HOLD_THRESHOLD, input_rx.recv()).await {
-+            Ok(Some(ev)) => {
-+                raw_events.push(ev);
-+                drain_immediate(&mut raw_events, input_rx);
++        let deadline = Instant::now() + SPACE_HOLD_THRESHOLD;
++        while space_press_unresolved(&raw_events) {
++            let remaining = deadline.saturating_duration_since(Instant::now());
++            if remaining.is_zero() {
++                break;
 +            }
-+            _ => {}
++            match tokio::time::timeout(remaining, input_rx.recv()).await {
++                Ok(Some(ev)) => {
++                    raw_events.push(ev);
++                    drain_immediate(&mut raw_events, input_rx);
++                }
++                _ => break,
++            }
++        }
++        // Still no Release/Repeat: this session does not report Space event
++        // types. Stop waiting on every tap; F8 still toggles dictation.
++        if space_press_unresolved(&raw_events) {
++            SPACE_EVENT_TYPES_UNRELIABLE.store(true, Ordering::Relaxed);
++            tracing::info!(
++                "hold-Space PTT disabled: Space did not report release/repeat (use F8)"
++            );
 +        }
 +    }
 +
-+    let space_hold_batch = crate::app::kitty_all_keys_reported()
++    let space_hold_batch = space_hold_protocol_live()
 +        && space_hold_indicated(raw_events.iter().map(|timed| &timed.event));
 +
 +    // The /gboom game tracks keys by press → release, so it needs the
@@ -245,20 +278,19 @@ index edb4e30..effbdca 100644
      let coalesced = if app.gboom_active() {
          raw_events
      } else {
-@@ -3509,6 +3539,12 @@ async fn drain_and_process(
+@@ -3509,6 +3554,11 @@ async fn drain_and_process(
          .into_iter()
          .map(normalize_input_event)
          .collect::<Vec<_>>();
-+    // Classified from `raw_events` above (captured before the filters run), not
-+    // from `coalesced`: `space_hold_indicated` reads a *missing* Release as the
-+    // key still being down, so any filter that dropped one would silently
-+    // promote a tap to a hold. `coalesce_rapid_keys` exempts voice-chord
-+    // releases today; this does not depend on it continuing to.
++    // Classified from `raw_events` above (captured before the filters run),
++    // not from `coalesced`: a filter dropping Repeat would otherwise miss a
++    // real hold. `coalesce_rapid_keys` exempts voice-chord releases today;
++    // this does not depend on it continuing to.
 +    let space_hold_this_batch = space_hold_batch;
  
      let mut handled: u32 = 0;
  
-@@ -3611,42 +3647,78 @@ async fn drain_and_process(
+@@ -3611,42 +3661,79 @@ async fn drain_and_process(
              }
              _ => {}
          }
@@ -307,8 +339,9 @@ index edb4e30..effbdca 100644
 +            let kitty = crate::app::kitty_releases_reported();
 +            // F8 is a functional key: it reports a release under
 +            // `REPORT_EVENT_TYPES` alone, so the chord path below keeps
-+            // `kitty`. A bare Space only does under all-keys reporting.
-+            let kitty_space = crate::app::kitty_all_keys_reported();
++            // `kitty`. A bare Space is PTT only when the session actually
++            // reports printable-key event types (see `space_hold_protocol_live`).
++            let kitty_space = space_hold_protocol_live();
 +
 +            if kitty_space
 +                && is_bare_space_key(ke)
@@ -367,7 +400,7 @@ index edb4e30..effbdca 100644
          }
          let is_resize = matches!(ev, Event::Resize(_, _));
          match app.handle_input_at_with_paste_provenance(
-@@ -3892,17 +3964,103 @@ fn voice_chord_claims_event(kind: KeyEventKind, keybind_enabled: bool, hold_owne
+@@ -3892,17 +3979,126 @@ fn voice_chord_claims_event(kind: KeyEventKind, keybind_enabled: bool, hold_owne
      kind != KeyEventKind::Release && keybind_enabled
  }
  
@@ -376,11 +409,35 @@ index edb4e30..effbdca 100644
 -/// A release matches the key alone (Space/F8), since on Kitty the Ctrl release can precede Space and drop the CONTROL bit.
 -/// Callers gate release handling on an owning hold session, so a stray bare release is a no-op.
 +/// How long a bare Space must be held before it becomes push-to-talk.
-+/// A quicker tap still types a space / focuses the prompt.
-+const SPACE_HOLD_THRESHOLD: Duration = Duration::from_millis(200);
++/// A quicker tap still types a space / focuses the prompt. Longer than a
++/// typical tap, long enough to see Kitty Repeat on a real hold.
++const SPACE_HOLD_THRESHOLD: Duration = Duration::from_millis(400);
++
++/// Set when a Space press timed out with no Release or Repeat: this session
++/// does not actually report printable-key event types, even if we pushed
++/// `REPORT_ALL_KEYS_AS_ESCAPE_CODES`. Hold-Space stays off for the rest of
++/// the process so later taps are not delayed.
++static SPACE_EVENT_TYPES_UNRELIABLE: AtomicBool = AtomicBool::new(false);
 +
 +fn is_bare_space_key(ke: &KeyEvent) -> bool {
 +    ke.code == KeyCode::Char(' ') && ke.modifiers.is_empty()
++}
++
++/// Whether hold-Space PTT can distinguish a tap from a hold in this session.
++///
++/// `kitty_all_keys_reported` only means we *pushed* the all-keys bit. herdr's
++/// VT still delivers a bare Space as UTF-8 with no release (herdr#1746), and
++/// a timeout-as-hold would open the mic on every typed space. Skip the
++/// intercept there; F8 still works. A live timeout without Repeat/Release
++/// latches the same skip for any other VT that lies the same way.
++fn space_hold_protocol_live() -> bool {
++    if SPACE_EVENT_TYPES_UNRELIABLE.load(Ordering::Relaxed) {
++        return false;
++    }
++    if !crate::app::kitty_all_keys_reported() {
++        return false;
++    }
++    crate::terminal::terminal_context().multiplexer != crate::terminal::MultiplexerKind::Herdr
 +}
 +
 +/// True when the batch ends on a bare Space press that has not yet seen
@@ -403,16 +460,14 @@ index edb4e30..effbdca 100644
 +    pending
 +}
 +
-+/// True when a bare Space press in this batch is a hold (Repeat arrived,
-+/// or the press is still down after the wait window) rather than a tap.
++/// True when a bare Space press in this batch is a hold (a Repeat arrived
++/// while the key was still down) rather than a tap.
 +///
-+/// The trailing `pending` is the load-bearing line: after the caller's wait
-+/// window has closed, an unresolved press means no Release came, i.e. the key
-+/// is still down. That inference is only sound where a bare Space reports a
-+/// release at all, so every caller must gate on
-+/// [`crate::app::kitty_all_keys_reported`] — under `REPORT_EVENT_TYPES` alone
-+/// Space arrives as plain UTF-8, no release ever lands, and this would answer
-+/// "hold" for every single tap.
++/// A trailing unresolved Press is **not** a hold. Multiplexers such as herdr
++/// never send a Space release, so "no Release after the wait window" is also
++/// the shape of a normal tap. Only an explicit Repeat proves the key is held.
++/// Callers still gate on [`space_hold_protocol_live`] so a session that cannot
++/// produce Repeat never intercepts Space.
 +fn space_hold_indicated<'a>(events: impl IntoIterator<Item = &'a Event>) -> bool {
 +    let mut pending = false;
 +    for ev in events {
@@ -428,7 +483,8 @@ index edb4e30..effbdca 100644
 +            _ => {}
 +        }
 +    }
-+    pending
++    let _ = pending;
++    false
 +}
 +
 +/// Hold-Space PTT mapping. A tap (`hold_this_batch == false`) never starts
@@ -479,7 +535,7 @@ index edb4e30..effbdca 100644
      }
  }
  
-@@ -4784,15 +4942,71 @@ mod tests {
+@@ -4784,15 +4980,74 @@ mod tests {
              KeyModifiers::CONTROL,
              KeyModifiers::NONE,
          );
@@ -519,8 +575,11 @@ index edb4e30..effbdca 100644
 +        assert!(!space_press_unresolved(&[timed(Press), timed(Release)]));
 +        assert!(!space_press_unresolved(&[timed(Press), timed(Repeat)]));
 +        assert!(space_hold_indicated([&ke(Press), &ke(Repeat)]));
-+        assert!(space_hold_indicated([&ke(Press)]));
++        // A lone Press is a tap even after the wait window: missing Release
++        // is what herdr (and UTF-8 Space) look like, not a hold.
++        assert!(!space_hold_indicated([&ke(Press)]));
 +        assert!(!space_hold_indicated([&ke(Press), &ke(Release)]));
++        assert!(!space_hold_indicated([&ke(Repeat)]));
 +        let letter = Event::Key(KeyEvent {
 +            code: KeyCode::Char('w'),
 +            modifiers: KeyModifiers::NONE,
@@ -582,7 +641,7 @@ index 8d3c9b4..67f19c7 100644
              );
          }
 diff --git a/crates/codegen/xai-grok-pager/src/settings/defs.rs b/crates/codegen/xai-grok-pager/src/settings/defs.rs
-index 65b4d3e..0cc3e97 100644
+index 9ed368f..0cc3e97 100644
 --- a/crates/codegen/xai-grok-pager/src/settings/defs.rs
 +++ b/crates/codegen/xai-grok-pager/src/settings/defs.rs
 @@ -319,12 +319,12 @@ const VOICE_CAPTURE_MODE_CHOICES: &[EnumChoice] = &[
@@ -600,7 +659,37 @@ index 65b4d3e..0cc3e97 100644
      },
  ];
  
-@@ -1398,14 +1398,15 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -534,6 +534,29 @@ pub fn default_settings() -> Vec<SettingMeta> {
+             restart_required: false,
+             hidden_in_minimal: false,
+         },
++        SettingMeta {
++            key: "transparent_bg",
++            category: SettingCategory::Appearance,
++            owner: SettingOwner::Shared,
++            label: "Transparent background",
++            description: "Leave theme canvas backgrounds unpainted (Color::Reset) so \
++                          terminal opacity/blur (e.g. Ghostty) shows through. Keeps \
++                          theme accents and text colors.",
++            keywords: &[
++                "transparent",
++                "transparency",
++                "opacity",
++                "background",
++                "ghostty",
++                "blur",
++                "glass",
++            ],
++            kind: SettingKind::Bool {
++                default: ui_default.transparent_bg,
++            },
++            restart_required: false,
++            hidden_in_minimal: false,
++        },
+         SettingMeta {
+             key: "screen_mode",
+             category: SettingCategory::Appearance,
+@@ -1375,14 +1398,15 @@ pub fn default_settings() -> Vec<SettingMeta> {
              restart_required: true,
              hidden_in_minimal: false,
          },
@@ -619,7 +708,7 @@ index 65b4d3e..0cc3e97 100644
                            When off, the keys are ignored; /voice still starts \
                            dictation.",
              keywords: &[
-@@ -1417,7 +1418,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1394,7 +1418,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
                  "stt",
                  "keybinding",
                  "hotkey",
@@ -629,7 +718,7 @@ index 65b4d3e..0cc3e97 100644
                  "f8",
                  "disable",
              ],
-@@ -1435,9 +1437,9 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1412,9 +1437,9 @@ pub fn default_settings() -> Vec<SettingMeta> {
              category: SettingCategory::Editor,
              owner: SettingOwner::Shell,
              label: "Voice capture",
@@ -642,7 +731,7 @@ index 65b4d3e..0cc3e97 100644
              keywords: &[
                  "voice",
                  "dictation",
-@@ -1448,7 +1450,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1425,7 +1450,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
                  "stt",
                  "toggle",
                  "hold",
