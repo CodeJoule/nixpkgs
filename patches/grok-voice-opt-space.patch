@@ -135,7 +135,7 @@ index 5f4906e..34b8ed0 100644
          },
          // Prompt history has no key chord (Ctrl+R is deliberately unbound):
 diff --git a/crates/codegen/xai-grok-pager/src/app/actions.rs b/crates/codegen/xai-grok-pager/src/app/actions.rs
-index 0c79cd5..26e41f5 100644
+index 069f299..26e41f5 100644
 --- a/crates/codegen/xai-grok-pager/src/app/actions.rs
 +++ b/crates/codegen/xai-grok-pager/src/app/actions.rs
 @@ -159,14 +159,18 @@ pub enum Action {
@@ -180,17 +180,6 @@ index 0c79cd5..26e41f5 100644
      SetVoiceCaptureMode(String),
      /// Set the voice STT language (catalog code or `auto`). SHELL-owned; persisted to `[ui].voice_stt_language`.
      /// Takes effect for the next voice capture.
-@@ -495,6 +500,10 @@ pub enum Action {
-     ToggleCompactMode,
-     /// Set compact mode (reduce user message padding).
-     SetCompactMode(bool),
-+    /// Toggle transparent theme backgrounds (defer canvas to terminal opacity).
-+    ToggleTransparentBg,
-+    /// Set transparent theme backgrounds (defer canvas to terminal opacity).
-+    SetTransparentBg(bool),
-     /// Set timestamp display on messages.
-     SetTimestamps(bool),
-     /// Set timeline sidebar visibility (per-turn tick rail).
 diff --git a/crates/codegen/xai-grok-pager/src/app/event_loop.rs b/crates/codegen/xai-grok-pager/src/app/event_loop.rs
 index edb4e30..ff26782 100644
 --- a/crates/codegen/xai-grok-pager/src/app/event_loop.rs
@@ -641,7 +630,7 @@ index 8d3c9b4..67f19c7 100644
              );
          }
 diff --git a/crates/codegen/xai-grok-pager/src/settings/defs.rs b/crates/codegen/xai-grok-pager/src/settings/defs.rs
-index 9ed368f..0cc3e97 100644
+index 65b4d3e..0cc3e97 100644
 --- a/crates/codegen/xai-grok-pager/src/settings/defs.rs
 +++ b/crates/codegen/xai-grok-pager/src/settings/defs.rs
 @@ -319,12 +319,12 @@ const VOICE_CAPTURE_MODE_CHOICES: &[EnumChoice] = &[
@@ -659,37 +648,7 @@ index 9ed368f..0cc3e97 100644
      },
  ];
  
-@@ -534,6 +534,29 @@ pub fn default_settings() -> Vec<SettingMeta> {
-             restart_required: false,
-             hidden_in_minimal: false,
-         },
-+        SettingMeta {
-+            key: "transparent_bg",
-+            category: SettingCategory::Appearance,
-+            owner: SettingOwner::Shared,
-+            label: "Transparent background",
-+            description: "Leave theme canvas backgrounds unpainted (Color::Reset) so \
-+                          terminal opacity/blur (e.g. Ghostty) shows through. Keeps \
-+                          theme accents and text colors.",
-+            keywords: &[
-+                "transparent",
-+                "transparency",
-+                "opacity",
-+                "background",
-+                "ghostty",
-+                "blur",
-+                "glass",
-+            ],
-+            kind: SettingKind::Bool {
-+                default: ui_default.transparent_bg,
-+            },
-+            restart_required: false,
-+            hidden_in_minimal: false,
-+        },
-         SettingMeta {
-             key: "screen_mode",
-             category: SettingCategory::Appearance,
-@@ -1375,14 +1398,15 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1398,14 +1398,15 @@ pub fn default_settings() -> Vec<SettingMeta> {
              restart_required: true,
              hidden_in_minimal: false,
          },
@@ -708,7 +667,7 @@ index 9ed368f..0cc3e97 100644
                            When off, the keys are ignored; /voice still starts \
                            dictation.",
              keywords: &[
-@@ -1394,7 +1418,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1417,7 +1418,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
                  "stt",
                  "keybinding",
                  "hotkey",
@@ -718,7 +677,7 @@ index 9ed368f..0cc3e97 100644
                  "f8",
                  "disable",
              ],
-@@ -1412,9 +1437,9 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1435,9 +1437,9 @@ pub fn default_settings() -> Vec<SettingMeta> {
              category: SettingCategory::Editor,
              owner: SettingOwner::Shell,
              label: "Voice capture",
@@ -731,7 +690,7 @@ index 9ed368f..0cc3e97 100644
              keywords: &[
                  "voice",
                  "dictation",
-@@ -1425,7 +1450,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
+@@ -1448,7 +1450,8 @@ pub fn default_settings() -> Vec<SettingMeta> {
                  "stt",
                  "toggle",
                  "hold",
