@@ -1,5 +1,5 @@
 {
-  description = "Personal packages — amphetamine-enhancer, moshi-hook, warp-agent-cli";
+  description = "Personal packages — amphetamine-enhancer, moshi-hook";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -21,10 +21,9 @@
         let
           pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
           moshi-hook = pkgs.callPackage ./packages/moshi-hook.nix { };
-          warp-agent-cli = pkgs.callPackage ./packages/warp-agent-cli.nix { };
         in
         {
-          inherit moshi-hook warp-agent-cli;
+          inherit moshi-hook;
         }
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           amphetamine-enhancer = pkgs.callPackage ./packages/amphetamine-enhancer.nix { };
