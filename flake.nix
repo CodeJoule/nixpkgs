@@ -35,25 +35,14 @@
           };
           mlx-prism = pkgs.callPackage ./packages/mlx-prism.nix { };
           moshi-hook = pkgs.callPackage ./packages/moshi-hook.nix { };
-          warp-agent-cli = pkgs.callPackage ./packages/warp-agent-cli.nix { };
         in
         {
           default = grok;
-          inherit grok mlx-prism moshi-hook warp-agent-cli;
+          inherit grok mlx-prism moshi-hook;
         }
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           amphetamine-enhancer = pkgs.callPackage ./packages/amphetamine-enhancer.nix { };
         }
-        # Prebuilt Darwin-only release; no aarch64-linux/x86_64-darwin artifact
-        # is packaged yet, so keep it off those systems rather than letting
-        # eval fail in packages/tode.nix.
-        # Disabled 2026-08-30 at the user's request (not in use). The package
-        # def in packages/tode.nix is kept, pinned at 0.2.0; re-enable by
-        # uncommenting here and in the nix-darwin packages.nix, then bump to
-        # the current upstream release (v0.3.4 as of this writing).
-        # // lib.optionalAttrs (system == "aarch64-darwin") {
-        #   tode = pkgs.callPackage ./packages/tode.nix { };
-        # }
         );
 
       overlays.default = final: prev: {
