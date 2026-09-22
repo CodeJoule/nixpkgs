@@ -5,24 +5,24 @@
 }:
 
 let
-  version = "0.3.19";
+  version = "0.3.26";
 
   sources = {
     aarch64-darwin = {
       url = "https://cdn.getmoshi.app/hook/v${version}/moshi-hook_Darwin_arm64.tar.gz";
-      hash = "sha256-va7rARMp56XK/8+cF2kG957n3Lo7ghd0Ouicz7euR3M=";
+      hash = "sha256-tGTRaxIqzlyMNCiKcXmVtPdD45Yc+pJhtbqLYWPX5tw=";
     };
     x86_64-darwin = {
       url = "https://cdn.getmoshi.app/hook/v${version}/moshi-hook_Darwin_x86_64.tar.gz";
-      hash = "sha256-H1PFHcU6X3yF5mLHQliDslEpW0KBmGYv8EVq0WoV9pI=";
+      hash = "sha256-doZeWxB5ZqCs6pfg6b4ePbLAaTDNZAZnKoWYdWlBk2Q=";
     };
     aarch64-linux = {
       url = "https://cdn.getmoshi.app/hook/v${version}/moshi-hook_Linux_arm64.tar.gz";
-      hash = "sha256-EsBimaR3DwrYEl6VzUnMb3EtGK4SMIr50iUIWbZ6e44=";
+      hash = "sha256-0QVwP7BT5q9BbnucqdjOOx+0iEQ1haHF6kX9OSukgRg=";
     };
     x86_64-linux = {
       url = "https://cdn.getmoshi.app/hook/v${version}/moshi-hook_Linux_x86_64.tar.gz";
-      hash = "sha256-yUzj3luOe20bnxLVAaldsEfwG/Mra4N+KaQikmfuedQ=";
+      hash = "sha256-AkFhSriCghWYAMr5oKZSMLjpJ+IfAqbTTsws/tx4JVA=";
     };
   };
 
