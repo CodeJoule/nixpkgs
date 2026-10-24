@@ -1,5 +1,5 @@
 {
-  description = "Personal packages — amphetamine-enhancer, moshi-hook";
+  description = "Personal packages — amphetamine-enhancer, moshi-hook, azahar";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -27,6 +27,7 @@
         }
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           amphetamine-enhancer = pkgs.callPackage ./packages/amphetamine-enhancer.nix { };
+          azahar = pkgs.callPackage ./packages/azahar { };
         }
         );
     };
