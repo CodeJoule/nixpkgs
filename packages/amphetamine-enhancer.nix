@@ -17,6 +17,10 @@ stdenvNoCC.mkDerivation rec {
 
   sourceRoot = ".";
 
+  # The bundle is code-signed; patchShebangs rewriting the bundled .sh breaks
+  # its seal and macOS reports the app as "damaged".
+  dontFixup = true;
+
   unpackPhase = ''
     runHook preUnpack
     undmg "$src"
